@@ -1,0 +1,17 @@
+{
+  "data": {
+    "public": {
+      "clients": {
+        "1": {
+          "ids": {
+            "user_id": "Jimbly",
+            "client_id": 1,
+            "display_name": "Jimbly"
+          }
+        }
+      }
+    },
+    "private": {},
+    "channel_id": "test.test"
+  }
+}
