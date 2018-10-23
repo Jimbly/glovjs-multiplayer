@@ -165,16 +165,14 @@ function createTechniqueParameters(draw_2d) {
     return;
   }
 
-  let d2dtp = draw_2d.techniqueParameters;
   tech_params = {
-      clipSpace: null,
+      clipSpace: draw_2d.clipSpace,
       param0: new Draw2D.floatArray(4),
       outlineColor: new Draw2D.floatArray(4),
       glowColor: new Draw2D.floatArray(4),
       glowParams: new Draw2D.floatArray(4),
-      texture: null
+      tex0: null
   };
-  tech_params.clipSpace = d2dtp.clipSpace;
   if (!temp_color) {
     temp_color = new Draw2D.floatArray(4);
   }
@@ -192,7 +190,7 @@ function techParamsSet(param, value) {
         outlineColor: new Draw2D.floatArray(tech_params.outlineColor),
         glowColor: new Draw2D.floatArray(tech_params.glowColor),
         glowParams: new Draw2D.floatArray(tech_params.glowParams),
-        texture: tech_params.texture,
+        tex0: tech_params.tex0,
       };
       tech_params_dirty = true;
       tpv = tech_params[param];
@@ -658,7 +656,7 @@ export function populateDraw2DParams(params) {
     'varying vec4 tz_TexCoord[1];',
     'varying TZ_LOWP vec4 tz_Color;',
     'vec4 _ret_0;',
-    'uniform sampler2D texture;'
+    'uniform sampler2D tex0;'
   ].join('\n');
   let shader_params = {
     'programs': {
@@ -670,7 +668,7 @@ export function populateDraw2DParams(params) {
           'uniform vec4 param0;',
           'void main()',
           '{',
-          '  float texture0=texture2D(texture,tz_TexCoord[0].xy).r;',
+          '  float texture0=texture2D(tex0,tz_TexCoord[0].xy).r;',
           '  float res = clamp(texture0 * param0.x + param0.y, 0.0, 1.0);',
           '  gl_FragColor=vec4(tz_Color.rgb, tz_Color.a * res);',
           '}',
@@ -686,10 +684,10 @@ export function populateDraw2DParams(params) {
           'uniform vec4 glowParams;',
           'void main()',
           '{',
-          '  float texture0=texture2D(texture,tz_TexCoord[0].xy).r;',
+          '  float texture0=texture2D(tex0,tz_TexCoord[0].xy).r;',
           '  // Glow',
           '  vec2 glowCoord = tz_TexCoord[0].xy + glowParams.xy;',
-          '  float textureGlow = texture2D(texture, glowCoord).r;',
+          '  float textureGlow = texture2D(tex0, glowCoord).r;',
           '  float t = clamp(textureGlow * glowParams.z + glowParams.w, 0.0, 1.0);',
           '  vec4 outcolor = vec4(glowColor.xyz, t * glowColor.w);',
           '  // Main body',
@@ -707,7 +705,7 @@ export function populateDraw2DParams(params) {
           'uniform vec4 outlineColor;',
           'void main()',
           '{',
-          '  float texture0=texture2D(texture,tz_TexCoord[0].xy).r;',
+          '  float texture0=texture2D(tex0,tz_TexCoord[0].xy).r;',
           '  // Outline',
           '  vec4 outcolor = vec4(outlineColor.xyz, 0);',
           '  outcolor.w = clamp(texture0 * param0.x + param0.z, 0.0, 1.0);',
@@ -730,10 +728,10 @@ export function populateDraw2DParams(params) {
           'uniform vec4 glowParams;',
           'void main()',
           '{',
-          '  float texture0=texture2D(texture,tz_TexCoord[0].xy).r;',
+          '  float texture0=texture2D(tex0,tz_TexCoord[0].xy).r;',
           '  // Glow',
           '  vec2 glowCoord = tz_TexCoord[0].xy + glowParams.xy;',
-          '  float textureGlow = texture2D(texture, glowCoord).r;',
+          '  float textureGlow = texture2D(tex0, glowCoord).r;',
           '  float t = clamp(textureGlow * glowParams.z + glowParams.w, 0.0, 1.0);',
           '  vec4 outcolor = vec4(glowColor.xyz, t * glowColor.w);',
           '  // vec4outclor = t * glowColor.xyz;',
@@ -780,7 +778,7 @@ export function populateDraw2DParams(params) {
     'version': 1,
     'name': 'glov_font.cgfx',
     'samplers': {
-      'texture': {
+      'tex0': {
         'MinFilter': 9729 /* LINEAR */ ,
         'MagFilter': 9729 /* LINEAR */ ,
         'WrapS': 33071,
@@ -792,7 +790,7 @@ export function populateDraw2DParams(params) {
         type: 'float',
         columns: 4
       },
-      texture: {
+      tex0: {
         type: 'sampler2D'
       },
       param0: {
@@ -824,7 +822,7 @@ export function populateDraw2DParams(params) {
   params.blendModes = {};
   for (let ii = 0; ii < shader_types.length; ++ii) {
     let st = shader_types[ii];
-    let params = ['clipSpace', 'texture', 'param0'];
+    let params = ['clipSpace', 'tex0', 'param0'];
     if (st.indexOf('outline') !== -1) {
       params.push('outlineColor');
     }
@@ -845,22 +843,22 @@ export function populateDraw2DParams(params) {
       'programs': ['vp_draw2D', 'fp_' + st]
     }];
   }
-  let shader = gd.createShader(shader_params);
 
+  // Same for _nearest version
+  let shader_params_nearest = JSON.parse(JSON.stringify(shader_params));
+  shader_params_nearest.samplers.tex0.MinFilter =
+    shader_params_nearest.samplers.tex0.MagFilter = 9728;
+
+  let shader = gd.createShader(shader_params);
   for (let ii = 0; ii < shader_types.length; ++ii) {
     let st = shader_types[ii];
     params.blendModes[st] = shader.getTechnique(st);
   }
 
-  // Same for _nearest version
-  shader_params = JSON.parse(JSON.stringify(shader_params));
-  shader_params.samplers.texture.MinFilter =
-    shader_params.samplers.texture.MagFilter = 9728;
-
-  shader = gd.createShader(shader_params);
+  let shader_nearest = gd.createShader(shader_params_nearest);
   for (let ii = 0; ii < shader_types.length; ++ii) {
     let st = shader_types[ii];
-    params.blendModes[st + '_nearest'] = shader.getTechnique(st);
+    params.blendModes[st + '_nearest'] = shader_nearest.getTechnique(st);
   }
 
 }
