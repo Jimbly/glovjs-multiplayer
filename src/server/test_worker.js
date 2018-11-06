@@ -1,4 +1,3 @@
-
 class TestWorker {
   constructor(channel_worker, channel_id) {
     this.channel_worker = channel_worker;

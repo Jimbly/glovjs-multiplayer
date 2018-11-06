@@ -12,7 +12,7 @@ let port = is_dev ? 4013 : 4012;
 let ds_store = data_store.create('data_store');
 
 let app = express();
-let server = http.Server(app);
+let server = new http.Server(app);
 let ws_server = new WSServer();
 ws_server.init(server);
 ws_server.on('error', function (error) {
@@ -25,5 +25,5 @@ channel_server.init(ds_store, ws_server);
 test_worker.init(channel_server);
 
 server.listen(port, () => {
-  console.log('Running server at http://localhost:' + port);
+  console.log(`Running server at http://localhost:${port}`);
 });

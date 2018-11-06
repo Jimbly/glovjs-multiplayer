@@ -20,6 +20,7 @@ class ClientChannelWorker {
 
   // cb(data [, mod_key, mod_value]);
   onChannelData(cb) {
+    assert(!this.on_channel_data || !cb); // This should really be EventEmitter-based?
     this.on_channel_data = cb;
   }
 
@@ -32,7 +33,10 @@ class ClientChannelWorker {
     resp_func();
   }
   handleApplyChannelData(data, resp_func) {
-    console.log(`got channel data mod: ${JSON.stringify(data)}`);
+    // already logged in handleChannelMessage
+    // if (!data.q) {
+    //   console.log(`got channel data mod: ${JSON.stringify(data)}`);
+    // }
     if (data.value === undefined) {
       dot_prop.delete(this.data, data.key);
     } else {
@@ -52,7 +56,8 @@ class ClientChannelWorker {
     if (!skip_predict) {
       dot_prop.set(this.data, key, value);
     }
-    this.subs.client.send('set_channel_data', { channel_id: this.channel_id, key, value }, resp_func);
+    let q = value && value.q || undefined;
+    this.subs.client.send('set_channel_data', { channel_id: this.channel_id, key, value, q }, resp_func);
   }
 
   removeMsgHandler(msg, cb) {
@@ -65,7 +70,8 @@ class ClientChannelWorker {
   }
 
   send(msg, data, opts, resp_func) {
-    this.subs.client.send('channel_msg', { channel_id: this.channel_id, msg, data, broadcast: opts.broadcast }, resp_func);
+    this.subs.client.send('channel_msg', { channel_id: this.channel_id, msg, data, broadcast: opts.broadcast },
+      resp_func);
   }
 }
 
@@ -105,7 +111,9 @@ class SubscriptionManager {
   }
 
   handleChannelMessage(data, resp_func) {
-    console.log(`got channel_msg(${data.channel_id}) ${data.msg}: ${JSON.stringify(data.data)}`);
+    if (!data.data || !data.data.q) {
+      console.log(`got channel_msg(${data.channel_id}) ${data.msg}: ${JSON.stringify(data.data)}`);
+    }
     let channel_id = data.channel_id;
     let msg = data.msg;
     data = data.data;
@@ -197,16 +205,17 @@ class SubscriptionManager {
     }
     this.logging_in = true;
     this.logged_in = false;
-    //client.send('channel_msg', { channel_id: room_name, msg: 'emote', data: 'is now known as ' + name, broadcast: true });
+    // client.send('channel_msg',
+    //  { channel_id: room_name, msg: 'emote', data: `is now known as ${name}`, broadcast: true });
     if (password && password.split('$$')[0] === 'prehashed') {
       password = password.split('$$')[1];
     } else if (password) {
       password = md5(md5(username) + password);
-      local_storage.set('password', 'prehashed$$' + password);
+      local_storage.set('password', `prehashed$$${password}`);
     } else {
       password = undefined;
     }
-    this.client.send('login', { name: username, password: password }, (err) => {
+    return this.client.send('login', { name: username, password: password }, (err) => {
       this.logging_in = false;
       if (!err) {
         this.logged_in_username = username;

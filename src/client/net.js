@@ -1,3 +1,4 @@
+const glov_engine = require('./glov/engine.js');
 const local_storage = require('./local_storage.js');
 const subscription_manager = require('./subscription_manager.js');
 const WSClient = require('./wsclient.js').WSClient;
@@ -13,7 +14,11 @@ export function init() {
   exports.subs = subs;
   exports.client = client;
 
-  subs.onConnect(function(/*reconnect*/) {
+  glov_engine.addTickFunc((dt) => {
+    subs.tick(dt);
+  });
+
+  subs.onConnect(function (/*reconnect*/) {
     if (local_storage.get('name') && local_storage.get('password')) {
       subs.login(local_storage.get('name'), local_storage.get('password'), function () {
         // ignore error on auto-login

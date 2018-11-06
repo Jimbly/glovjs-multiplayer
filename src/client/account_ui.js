@@ -29,9 +29,9 @@ class AccountUI {
       let submit = false;
       let w = 100;
       let pad = 10;
-      submit = edit_box_name.run({x, y, w}) === edit_box_name.SUBMIT || submit;
+      submit = edit_box_name.run({ x, y, w }) === edit_box_name.SUBMIT || submit;
       x += w + pad;
-      submit = edit_box_password.run({x, y, w}) === edit_box_password.SUBMIT || submit;
+      submit = edit_box_password.run({ x, y, w }) === edit_box_password.SUBMIT || submit;
       x += w + pad;
       submit = glov_ui.buttonText({
         x, y, w: 240,
@@ -65,8 +65,6 @@ class AccountUI {
   }
 }
 
-export function create() {
-  let args = Array.prototype.slice.call(arguments, 0);
-  args.splice(0,0, null);
-  return new (Function.prototype.bind.apply(AccountUI, args))();
+export function create(...args) {
+  return new AccountUI(...args);
 }

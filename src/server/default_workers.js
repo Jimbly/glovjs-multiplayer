@@ -10,7 +10,7 @@ class DefaultUserWorker {
       return resp_func('Missing name');
     }
     this.channel_worker.setChannelData('public.display_name', new_name);
-    resp_func(null, 'Successfully renamed');
+    return resp_func(null, 'Successfully renamed');
   }
   handleSetChannelData(client/*, key, value*/) {
     if (client.is_channel_worker) {

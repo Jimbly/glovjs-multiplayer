@@ -1,4 +1,3 @@
-/*jshint unused:vars*/
 /*global require,console,setTimeout,clearTimeout*/
 const assert = require('assert');
 
@@ -22,10 +21,12 @@ function sendMessageInternal(client, msg, err, data, resp_func) {
 }
 
 export function sendMessage(msg, data, resp_func) {
+  /* eslint no-invalid-this:off */
   sendMessageInternal(this, msg, null, data, resp_func);
 }
 
 export function handleMessage(client, net_data) {
+  /* eslint consistent-return:off */
   /* WebSockets
   try {
     net_data = JSON.parse(net_data);
@@ -39,7 +40,7 @@ export function handleMessage(client, net_data) {
   let msg = net_data.msg;
   let pak_id = net_data.pak_id;
 
-  let expecting_response = !!pak_id;
+  let expecting_response = Boolean(pak_id);
   let timeout_id;
   if (expecting_response) {
     timeout_id = 'pending';
@@ -54,7 +55,9 @@ export function handleMessage(client, net_data) {
       // But, the other end is not expecting a response from this packet, black-hole it
       if (resp_func) {
         // We better not be expecting a response to our response!
-        return client.onError('Sending a response to a packet that did not expect one, but we are expecting a response');
+        client.onError('Sending a response to a packet that did not expect' +
+          ' one, but we are expecting a response');
+        return;
       }
       // however, if there was an error, let's forward that along as an error message
       if (err) {
@@ -67,7 +70,8 @@ export function handleMessage(client, net_data) {
         clearTimeout(timeout_id);
       }
     } else {
-      (client.log ? client : console).log('Response finally sent for ' + msg + ' after ' + ((Date.now() - start_time) / 1000).toFixed(1) + 's');
+      (client.log ? client : console).log(`Response finally sent for ${msg} after ${
+        ((Date.now() - start_time) / 1000).toFixed(1)}s`);
     }
     client.responses_waiting--;
     sendMessageInternal(client, pak_id, err, resp_data, resp_func);
@@ -75,18 +79,19 @@ export function handleMessage(client, net_data) {
   if (typeof msg === 'number') {
     let cb = client.resp_cbs[msg];
     if (!cb) {
-      return client.onError('Received response to unknown packet with id ' +
-        msg + ' from client ' + client.id);
+      return client.onError(`Received response to unknown packet with id ${
+        msg} from client ${client.id}`);
     }
+    /* eslint callback-return:off */
     cb(err, data, respFunc);
   } else {
     if (!msg) {
-      return client.onError('Received message with no .msg from client ' + client.id);
+      return client.onError(`Received message with no .msg from client ${client.id}`);
     }
     let handler = client.handlers[msg];
     if (!handler) {
-      return client.onError('No handler for message ' +
-        JSON.stringify(msg) + ' from client ' + client.id);
+      return client.onError(`No handler for message ${
+        JSON.stringify(msg)} from client ${client.id}`);
     }
     handler(client, data, respFunc);
   }
@@ -97,7 +102,8 @@ export function handleMessage(client, net_data) {
       // timeout warning for response
       timeout_id = setTimeout(function () {
         timeout_id = null;
-        (client.log ? client : console).log('Response not sent for ' + msg + ' after ' + ((Date.now() - start_time) / 1000).toFixed(1) + 's');
+        (client.log ? client : console).log(`Response not sent for ${msg} after ${
+          ((Date.now() - start_time) / 1000).toFixed(1)}s`);
       }, 15*1000);
     }
   }

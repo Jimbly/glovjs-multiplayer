@@ -1,8 +1,8 @@
 /*jshint browser:true */
 /* global io */
 
-var wscommon = require('../common/wscommon.js');
-var assert = require('assert');
+const wscommon = require('../common/wscommon.js');
+const assert = require('assert');
 
 export function WSClient() {
   this.last_pak_id = 0;
@@ -18,21 +18,20 @@ WSClient.prototype.send = function (msg, data, resp_func) {
   wscommon.sendMessage.call(this, msg, data, resp_func);
 };
 
-WSClient.prototype.onError = function(e) {
+WSClient.prototype.onError = function (e) {
   throw e;
 };
 
 // cb(client, data, resp_func)
-WSClient.prototype.onMsg = function(msg, cb) {
+WSClient.prototype.onMsg = function (msg, cb) {
   assert.ok(!this.handlers[msg]);
-  let wrap_cb = function (client, data, resp_func) {
+  this.handlers[msg] = function wrappedCallback(client, data, resp_func) {
     // Client interface does not need a client passed to it!
     return cb(data, resp_func);
   };
-  this.handlers[msg] = wrap_cb;
 };
 
-WSClient.prototype.connect = function() {
+WSClient.prototype.connect = function () {
   let client = this;
 
   let path = location.pathname;
@@ -47,9 +46,9 @@ WSClient.prototype.connect = function() {
     }
   }
   if (path[0] !== '/') {
-    path = '/' + path;
+    path = `/${path}`;
   }
-  client.socket = io.connect(undefined, { path: path + 'socket.io' });
+  client.socket = io.connect(undefined, { path: `${path}socket.io` });
   client.socket.onerror = function (err) {
     client.onError(err);
   };

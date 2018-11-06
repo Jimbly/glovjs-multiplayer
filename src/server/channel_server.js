@@ -6,6 +6,7 @@ const dot_prop = require('dot-prop');
 let cmd_parse_system = cmd_parse.create(); // always empty?
 
 function noop() {
+  // do nothing
 }
 
 function logdata(data) {
@@ -13,7 +14,7 @@ function logdata(data) {
   if (r.length < 80) {
     return r;
   }
-  return r.slice(0, 77) + '...';
+  return `${r.slice(0, 77)}...`;
 }
 
 function onClientDisconnect(channel_server, client) {
@@ -52,8 +53,10 @@ function onUnSubscribe(channel_server, client, channel_id) {
 
 
 function onSetChannelData(channel_server, client, data, resp_func) {
-  console.log(`client_id:${client.id}->${data.channel_id}: set_channel_data ${logdata(data)}`);
-  data.key = '' + data.key;
+  if (!data.q) {
+    console.log(`client_id:${client.id}->${data.channel_id}: set_channel_data ${logdata(data)}`);
+  }
+  data.key = String(data.key);
   let channel_id = data.channel_id;
   assert(channel_id);
   let channel = client.channels[channel_id];
@@ -74,7 +77,7 @@ function onSetChannelData(channel_server, client, data, resp_func) {
     return;
   }
 
-  channel.setChannelDataInternal(client, data.key, data.value);
+  channel.setChannelDataInternal(client, data.key, data.value, data.q);
   resp_func();
 }
 
@@ -85,7 +88,7 @@ function onChannelMsg(channel_server, client, data, resp_func) {
   assert(channel_id);
   let channel = client.channels[channel_id];
   if (!channel) {
-    return resp_func(`Client is not on channel ${channel_id}`);
+    return void resp_func(`Client is not on channel ${channel_id}`);
   }
   // TODO: Also query app_worker if this is okay?
   if (data.broadcast) {
@@ -128,10 +131,10 @@ function onLogin(channel_server, client, data, resp_func) {
       client.channels[channel_id].clientChanged(client);
     }
     // Always subscribe client to own user
-    onSubscribe(channel_server, client, 'user.' + data.name);
-    resp_func(null, 'success');
+    onSubscribe(channel_server, client, `user.${data.name}`);
+    return resp_func(null, 'success');
   } else {
-    resp_func('invalid password');
+    return resp_func('invalid password');
   }
 }
 
@@ -156,11 +159,32 @@ function onCmdParse(channel_server, client, data, resp_func) {
   cmd_parse_system.handle(data, resp_func);
 }
 
+function channelServerSend(source, dest, msg, data, resp_func) {
+  if (!data || !data.q) {
+    console.log(`${source.is_channel_worker ? source.channel_id : `client_id:${source.id}`}->` +
+      `${dest.is_channel_worker ? dest.channel_id : `client_id:${dest.id}`}: ${msg} ${logdata(data)}`);
+  }
+  if (dest.is_channel_worker) {
+    dest.channelMessage(source, msg, data, resp_func);
+  } else {
+    if (source.is_channel_worker) {
+      dest.send('channel_msg', {
+        channel_id: source.channel_id,
+        msg: msg,
+        data: data,
+      }, resp_func);
+    } else {
+      // client to client?
+      assert(0);
+    }
+  }
+}
+
 class ChannelWorker {
   constructor(channel_server, channel_id) {
     this.channel_server = channel_server;
     this.channel_id = channel_id;
-    let m = channel_id.match(/^([^.]*)\.(.*)$/);
+    let m = channel_id.match(/^([^.]*)\.(.*)$/u);
     assert(m);
     this.channel_type = m[1];
     this.channel_subid = m[2];
@@ -329,17 +353,19 @@ class ChannelWorker {
       if (this.clients[ii] === except_client) {
         continue;
       }
-      this.channel_server.send(this, this.clients[ii], msg, data);
+      channelServerSend(this, this.clients[ii], msg, data);
     }
   }
-  setChannelData(key, value) {
-    this.setChannelDataInternal(this, key, value);
+  setChannelData(key, value, q) {
+    this.setChannelDataInternal(this, key, value, q);
   }
 
-  setChannelDataInternal(client, key, value) {
+  setChannelDataInternal(client, key, value, q) {
     assert(typeof key === 'string');
     assert(typeof client === 'object');
-    if (this.app_worker && this.app_worker.handleSetChannelData && !this.app_worker.handleSetChannelData(client, key, value)) {
+    if (this.app_worker && this.app_worker.handleSetChannelData &&
+      !this.app_worker.handleSetChannelData(client, key, value)
+    ) {
       // denied by app_worker
       console.log(' - failed app_worker check');
       return;
@@ -352,7 +378,7 @@ class ChannelWorker {
     }
     // only send public changes
     if (key.startsWith('public')) {
-      this.channelEmit('apply_channel_data', { key, value }, this.adding_client);
+      this.channelEmit('apply_channel_data', { key, value, q }, this.adding_client);
     }
     this.channel_server.ds_store.set(this.store_path, '', this.data);
   }
@@ -373,7 +399,7 @@ class ChannelWorker {
     }
   }
   sendChannelMessage(dest, msg, data, resp_func) {
-    this.channel_server.send(this, dest, msg, data, resp_func);
+    channelServerSend(this, dest, msg, data, resp_func);
   }
 }
 
@@ -459,32 +485,12 @@ class ChannelServer {
     }
     return ret;
   }
-
-  send(source, dest, msg, data, resp_func) {
-    console.log(`${source.is_channel_worker ? source.channel_id : ('client_id:' + source.id)}->${dest.is_channel_worker ? dest.channel_id : ('client_id:' + dest.id)}: ${msg} ${logdata(data)}`);
-    if (dest.is_channel_worker) {
-      dest.channelMessage(source, msg, data, resp_func);
-    } else {
-      if (source.is_channel_worker) {
-        dest.send('channel_msg', {
-          channel_id: source.channel_id,
-          msg: msg,
-          data: data,
-        }, resp_func);
-      } else {
-        // client to client?
-        assert(0);
-      }
-    }
-  }
 }
 
-export function create() {
-  let args = Array.prototype.slice.call(arguments, 0);
-  args.splice(0,0, null);
-  return new (Function.prototype.bind.apply(ChannelServer, args))();
+export function create(...args) {
+  return new ChannelServer(...args);
 }
 
 export function pathEscape(filename) {
-  return filename.replace(/\./g, '\\.');
+  return filename.replace(/\./gu, '\\.');
 }

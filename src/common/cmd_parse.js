@@ -1,6 +1,5 @@
-
 function canonical(cmd) {
-  return cmd.toLowerCase().replace(/[_\.]/g, '');
+  return cmd.toLowerCase().replace(/[_.]/gu, '');
 }
 
 class CmdParse {
@@ -10,7 +9,7 @@ class CmdParse {
   }
   handle(str, resp_func) {
     this.was_not_found = false;
-    let m = str.match(/^([^\s]+)(?:\s+(.*))?$/);
+    let m = str.match(/^([^\s]+)(?:\s+(.*))?$/u);
     if (!m) {
       resp_func('Missing command');
       return true;

@@ -48,7 +48,9 @@ class ChatUI {
     if (glov_input.keyDownHit(glov_input.key_codes.RETURN)) {
       this.edit_text_entry.focus();
     }
-    if (glov_input.keyDownHit(glov_input.key_codes.SLASH) || glov_input.keyDownHit(glov_input.key_codes.NUMPAD_DIVIDE)) {
+    if (glov_input.keyDownHit(glov_input.key_codes.SLASH) ||
+      glov_input.keyDownHit(glov_input.key_codes.NUMPAD_DIVIDE)
+    ) {
       this.edit_text_entry.focus();
       this.edit_text_entry.setText('/');
     }
@@ -56,9 +58,9 @@ class ChatUI {
     let y0 = glov_ui.camera.y1();
     let y = y0;
     let w = (glov_ui.camera.x1() - glov_ui.camera.x0()) / 2;
-    if (net.subs.loggedIn()) {
+    if (net.subs.loggedIn() && !(glov_ui.modal_dialog || glov_ui.menu_up)) {
       y -= 40;
-      if (this.edit_text_entry.run({x, y, w}) === this.edit_text_entry.SUBMIT) {
+      if (this.edit_text_entry.run({ x, y, w }) === this.edit_text_entry.SUBMIT) {
         let text = this.edit_text_entry.getText();
         if (text) {
           if (text[0] === '/') {
@@ -70,7 +72,7 @@ class ChatUI {
               }
             };
             let command = text.slice(1);
-            this.cmd_parse.handle(command, (err, resp)=> {
+            this.cmd_parse.handle(command, (err, resp) => {
               if (err && this.cmd_parse.was_not_found) {
                 // forward to server
                 net.client.send('cmdparse', command, handleCmdParse);
@@ -86,11 +88,11 @@ class ChatUI {
           this.edit_text_entry.unfocus();
         }
       }
-      y -= 8;
     }
+    y -= 8;
     let numlines;
     let indent = 80;
-    function wordCallback(x, linenum /*, word*/) {
+    function wordCallback(ignored, linenum, word) {
       numlines = Math.max(numlines, linenum);
     }
     for (let ii = 0; ii < Math.min(this.msgs.length, this.max_messages); ++ii) {
@@ -123,8 +125,6 @@ class ChatUI {
   }
 }
 
-export function create() {
-  let args = Array.prototype.slice.call(arguments, 0);
-  args.splice(0,0, null);
-  return new (Function.prototype.bind.apply(ChatUI, args))();
+export function create(...args) {
+  return new ChatUI(...args);
 }
