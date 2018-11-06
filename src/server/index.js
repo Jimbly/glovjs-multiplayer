@@ -7,7 +7,7 @@ const test_worker = require('./test_worker.js');
 const WSServer = require('./wsserver.js');
 
 let is_dev = process.argv.indexOf('--dev') !== -1;
-let port = is_dev ? 4013 : 4012;
+let port = is_dev ? 3000 : 3001;
 //let ds_store = data_store.create('data.json', true);
 let ds_store = data_store.create('data_store');
 

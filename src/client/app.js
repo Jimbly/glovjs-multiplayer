@@ -9,7 +9,7 @@ const net_position_manager = require('./net_position_manager.js');
 const particle_data = require('./particle_data.js');
 const shaders = require('./shaders.js');
 
-local_storage.storage_prefix = 'dsproto';
+local_storage.storage_prefix = 'glovjs-multiplayer';
 
 window.Z = window.Z || {};
 Z.BACKGROUND = 0;
@@ -210,7 +210,7 @@ export function main(canvas) {
   }
 
   function testInit(dt) {
-    app.game_state = test;
+    glov_engine.setState(test);
     test(dt);
   }
 
