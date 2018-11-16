@@ -478,8 +478,14 @@ class GlovFont {
   // Main implementation
 
   drawScaled(style, _x, y, z, xsc, ysc, text) {
+
     let x = _x;
     let font_info = this.font_info;
+    // Debug: show expect area of glyphs
+    // require('./engine.js').glov_ui.drawRect(_x, y,
+    //   _x + xsc * font_info.font_size * 20, y + ysc * font_info.font_size,
+    //   1000, [1, 0, 1, 0.5]);
+    y += (font_info.y_offset || 0) * ysc;
     let tex = this.texture.getTexture();
     if (text === null || text === undefined) {
       text = '(null)';

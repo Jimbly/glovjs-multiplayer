@@ -21,11 +21,38 @@ export let draw_list;
 export let font;
 export let effects;
 export let app_state = null;
-export let pico8_colors;
+export const pico8_colors = [
+  VMath.v4Build(0, 0, 0, 1),
+  VMath.v4Build(0.114, 0.169, 0.326, 1),
+  VMath.v4Build(0.494, 0.145, 0.326, 1),
+  VMath.v4Build(0.000, 0.529, 0.328, 1),
+  VMath.v4Build(0.671, 0.322, 0.212, 1),
+  VMath.v4Build(0.373, 0.341, 0.310, 1),
+  VMath.v4Build(0.761, 0.765, 0.780, 1),
+  VMath.v4Build(1.000, 0.945, 0.910, 1),
+  VMath.v4Build(1.000, 0.000, 0.302, 1),
+  VMath.v4Build(1.000, 0.639, 0.000, 1),
+  VMath.v4Build(1.000, 0.925, 0.153, 1),
+  VMath.v4Build(0.000, 0.894, 0.212, 1),
+  VMath.v4Build(0.161, 0.678, 1.000, 1),
+  VMath.v4Build(0.514, 0.463, 0.612, 1),
+  VMath.v4Build(1.000, 0.467, 0.659, 1),
+  VMath.v4Build(1.000, 0.800, 0.667, 1),
+];
 
 let global_timer = 0;
 export function getFrameTimestamp() {
   return global_timer;
+}
+
+let global_frame_index = 0;
+export function getFrameIndex() {
+  return global_frame_index;
+}
+
+let this_frame_time = 0;
+export function getFrameDt() {
+  return this_frame_time;
 }
 
 let after_loading_state = null;
@@ -34,7 +61,6 @@ export function setState(new_state) {
   if (is_loading) {
     after_loading_state = new_state;
   } else {
-    glov_ui.menu_up = false;
     app_state = new_state;
   }
 }
@@ -76,8 +102,10 @@ function tick() {
   }
   let now = Date.now();
   let dt = Math.min(Math.max(now - last_tick, 1), 250);
+  this_frame_time = dt;
   last_tick = now;
   global_timer += dt;
+  ++global_frame_index;
 
   glov_camera.tick();
   glov_camera.set2DAspectFixed(game_width, game_height);
@@ -142,6 +170,7 @@ function tick() {
     draw_2d.copyRenderTarget(frame_effects[frame_effects.length - 1].dest);
   }
 
+  glov_ui.endFrame();
   graphics_device.endFrame();
   glov_input.endFrame();
   resetEffects();
@@ -154,7 +183,7 @@ export function startup(params) {
     fillParent: true
   });
   if (!TurbulenzEngine) {
-    /* eslint no-alert:off */
+    // eslint-disable-next-line no-alert
     window.alert('Failed to init TurbulenzEngine (canvas)');
     return;
   }
@@ -163,7 +192,7 @@ export function startup(params) {
 
   graphics_device = TurbulenzEngine.createGraphicsDevice({});
   let draw2d_params = { graphicsDevice: graphics_device, shaders: params.shaders || {} };
-  /* eslint global-require:off */
+  /* eslint-disable global-require */
   const glov_font = require('./font.js');
   glov_font.populateDraw2DParams(draw2d_params);
   draw_2d = Draw2D.create(draw2d_params);
@@ -187,32 +216,13 @@ export function startup(params) {
   const font_info_arial12x2 = require('../img/font/04b03_8x2.json');
   font = glov_font.create(draw_list, params.pixely ? font_info_arial12x2 : font_info_arial32,
     glov_sprite.loadTexture(params.pixely ? 'font/04b03_8x2.png' : 'font/arial32.png'));
-  glov_ui = require('./ui.js').create(glov_sprite, glov_input, font, draw_list);
+  glov_ui = require('./ui.js').create(font, draw_list);
   glov_ui.bindSounds(sound_manager, { // TODO: Allow overriding?
     button_click: 'button_click',
     rollover: 'rollover',
   });
 
   glov_camera.set2DAspectFixed(game_width, game_height);
-
-  pico8_colors = [
-    VMath.v4Build(0, 0, 0, 1),
-    VMath.v4Build(0.114, 0.169, 0.326, 1),
-    VMath.v4Build(0.494, 0.145, 0.326, 1),
-    VMath.v4Build(0.000, 0.529, 0.328, 1),
-    VMath.v4Build(0.671, 0.322, 0.212, 1),
-    VMath.v4Build(0.373, 0.341, 0.310, 1),
-    VMath.v4Build(0.761, 0.765, 0.780, 1),
-    VMath.v4Build(1.000, 0.945, 0.910, 1),
-    VMath.v4Build(1.000, 0.000, 0.302, 1),
-    VMath.v4Build(1.000, 0.639, 0.000, 1),
-    VMath.v4Build(1.000, 0.925, 0.153, 1),
-    VMath.v4Build(0.000, 0.894, 0.212, 1),
-    VMath.v4Build(0.161, 0.678, 1.000, 1),
-    VMath.v4Build(0.514, 0.463, 0.612, 1),
-    VMath.v4Build(1.000, 0.467, 0.659, 1),
-    VMath.v4Build(1.000, 0.800, 0.667, 1),
-  ];
 
   if (params.state) {
     setState(params.state);
@@ -223,6 +233,7 @@ export function startup(params) {
 
   // TODO: Use requestAnimationFrame instead?
   TurbulenzEngine.setInterval(tick, 1000/60);
+  /* eslint-enable global-require */
 }
 
 // Example effects can be found at:

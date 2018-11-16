@@ -3,9 +3,13 @@ let relaxed = true; // Specific things I'm relaxing for convenience, probably no
 
 module.exports = {
   "env": {
-    "browser": true,
     "es6": true,
     "node": true
+  },
+  "globals": {
+    // Just the super-common ones, don't mask undefined variables named "status", etc
+    "window": true,
+    "document": true,
   },
   "extends": "eslint:recommended",
   "parserOptions": {
@@ -259,7 +263,7 @@ module.exports = {
       {
         "max": 2,
         "maxEOF": 0,
-        "maxBOF": 0
+        "maxBOF": 1
       }
     ],
     "no-native-reassign": "error",
@@ -466,7 +470,7 @@ module.exports = {
     "use-isnan": "error",
     "valid-jsdoc": "error",
     "valid-typeof": "error",
-    "vars-on-top": "error",
+    "vars-on-top": "off", // JE
     "wrap-iife": "error",
     "wrap-regex": "error",
     "yield-star-spacing": "error",

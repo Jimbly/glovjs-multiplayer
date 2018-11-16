@@ -3,10 +3,11 @@
 const glov_engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const net = require('./net.js');
+let glov_ui;
+let glov_input;
 
 class ChatUI {
   constructor(cmd_parse) {
-    let glov_ui = glov_engine.glov_ui;
     this.cmd_parse = cmd_parse;
     this.edit_text_entry = glov_ui.createEditBox({
       placeholder: 'Chatbox',
@@ -43,8 +44,6 @@ class ChatUI {
   }
 
   run() {
-    let glov_ui = glov_engine.glov_ui;
-    let glov_input = glov_ui.glov_input;
     if (glov_input.keyDownHit(glov_input.key_codes.RETURN)) {
       this.edit_text_entry.focus();
     }
@@ -126,5 +125,9 @@ class ChatUI {
 }
 
 export function create(...args) {
+  if (!glov_ui) {
+    glov_ui = glov_engine.glov_ui;
+    glov_input = glov_engine.glov_input;
+  }
   return new ChatUI(...args);
 }

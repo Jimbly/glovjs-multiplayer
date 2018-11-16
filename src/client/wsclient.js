@@ -1,4 +1,3 @@
-/*jshint browser:true */
 /* global io */
 
 const wscommon = require('../common/wscommon.js');
@@ -34,7 +33,7 @@ WSClient.prototype.onMsg = function (msg, cb) {
 WSClient.prototype.connect = function () {
   let client = this;
 
-  let path = location.pathname;
+  let path = document.location.pathname;
   if (path.slice(-1) !== '/') {
     // /file.html or /path/file.html or /path
     let idx = path.lastIndexOf('/');

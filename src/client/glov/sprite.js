@@ -97,24 +97,19 @@ class GlovSpriteManager {
     Draw2DSprite.prototype.drawDualTint = this.drawDualTint;
   }
 
-  buildRects(ws, hs) {
-    /* eslint class-methods-use-this:off */
+  buildRects(ws, hs) { // eslint-disable-line class-methods-use-this
     let rects = [];
     let total_w = 0;
     for (let ii = 0; ii < ws.length; ++ii) {
       total_w += ws[ii];
     }
-    let percents_w = [];
-    for (let ii = 0; ii < ws.length; ++ii) {
-      percents_w.push(ws[ii] / total_w);
-    }
     let total_h = 0;
     for (let ii = 0; ii < hs.length; ++ii) {
       total_h += hs[ii];
     }
-    let percents_h = [];
-    for (let ii = 0; ii < hs.length; ++ii) {
-      percents_h.push(hs[ii] / total_h);
+    let wh = [];
+    for (let ii = 0; ii < ws.length; ++ii) {
+      wh.push(ws[ii] / total_h);
     }
     let y = 0;
     for (let jj = 0; jj < hs.length; ++jj) {
@@ -127,9 +122,10 @@ class GlovSpriteManager {
       y += hs[jj];
     }
     return {
+      widths: ws,
+      heights: hs,
+      wh,
       rects,
-      percents_w,
-      percents_h,
       total_w,
       total_h,
     };
@@ -159,8 +155,7 @@ class GlovSpriteManager {
     }
   }
 
-  createAnimation(params) {
-    /* eslint class-methods-use-this:off */
+  createAnimation(params) { // eslint-disable-line class-methods-use-this
     return new GlovSpriteAnimation(params);
   }
 

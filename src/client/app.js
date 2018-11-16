@@ -112,6 +112,9 @@ export function main(canvas) {
       app.chat_ui.setChannel(test_room);
     }
 
+    app.chat_ui.run(dt);
+    app.account_ui.showLogin();
+
     if (!test.color_sprite) {
       test.color_sprite = VMath.v4Copy(color_white);
       test.character = {
@@ -204,9 +207,6 @@ export function main(canvas) {
           other_client.ids.display_name || `client_${client_id}`);
       }
     }
-
-    app.chat_ui.run(dt);
-    app.account_ui.showLogin();
   }
 
   function testInit(dt) {
