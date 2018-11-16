@@ -21,12 +21,11 @@ function sendMessageInternal(client, msg, err, data, resp_func) {
 }
 
 export function sendMessage(msg, data, resp_func) {
-  /* eslint no-invalid-this:off */
-  sendMessageInternal(this, msg, null, data, resp_func);
+  sendMessageInternal(this, msg, null, data, resp_func); // eslint-disable-line no-invalid-this
 }
 
+// eslint-disable-next-line consistent-return
 export function handleMessage(client, net_data) {
-  /* eslint consistent-return:off */
   /* WebSockets
   try {
     net_data = JSON.parse(net_data);
@@ -82,8 +81,7 @@ export function handleMessage(client, net_data) {
       return client.onError(`Received response to unknown packet with id ${
         msg} from client ${client.id}`);
     }
-    /* eslint callback-return:off */
-    cb(err, data, respFunc);
+    cb(err, data, respFunc); // eslint-disable-line callback-return
   } else {
     if (!msg) {
       return client.onError(`Received message with no .msg from client ${client.id}`);
