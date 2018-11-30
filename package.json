@@ -1,5 +1,5 @@
 {
-  "name": "ds2proto1",
+  "name": "glovjs-multiplayer",
   "version": "0.0.1",
   "description": "Template for a state of the art online multiplayer Javascript project using Turbulenz and socket.io",
   "main": "build/server/index.js",

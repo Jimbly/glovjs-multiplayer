@@ -43,7 +43,8 @@ class ChatUI {
     this.addChat(`[${data.client_ids.display_name}] ${data.msg}`);
   }
 
-  run() {
+  runLate() {
+    this.did_run_late = true;
     if (glov_input.keyDownHit(glov_input.key_codes.RETURN)) {
       this.edit_text_entry.focus();
     }
@@ -53,6 +54,13 @@ class ChatUI {
       this.edit_text_entry.focus();
       this.edit_text_entry.setText('/');
     }
+  }
+
+  run() {
+    if (!this.did_run_late) {
+      this.runLate();
+    }
+    this.did_run_late = false;
     let x = glov_ui.camera.x0() + 10;
     let y0 = glov_ui.camera.y1();
     let y = y0;
@@ -84,7 +92,7 @@ class ChatUI {
           }
           this.edit_text_entry.setText('');
         } else {
-          this.edit_text_entry.unfocus();
+          glov_ui.focusCanvas();
         }
       }
     }

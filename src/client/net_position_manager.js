@@ -140,8 +140,7 @@ class NetPositionManager {
     // client_pos is { cur, state, speed }
     let pcd = this.per_client_data[client_id];
     if (!pcd) {
-      /* eslint no-multi-assign:off */
-      pcd = this.per_client_data[client_id] = {};
+      pcd = this.per_client_data[client_id] = {}; // eslint-disable-line no-multi-assign
       pcd.pos = VMath.v2Copy(client_pos.cur);
       pcd.net_speed = 0;
       pcd.net_pos = VMath.v2Copy(client_pos.cur);

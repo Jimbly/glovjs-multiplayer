@@ -207,6 +207,8 @@ export function main(canvas) {
           other_client.ids.display_name || `client_${client_id}`);
       }
     }
+
+    app.chat_ui.runLate(dt);
   }
 
   function testInit(dt) {
