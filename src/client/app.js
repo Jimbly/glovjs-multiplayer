@@ -3,7 +3,7 @@
 /*global Z: false */
 
 const cmd_parse = require('../common/cmd_parse.js').create();
-const local_storage = require('./local_storage.js');
+const local_storage = require('./glov/local_storage.js');
 const net = require('./net.js');
 const net_position_manager = require('./net_position_manager.js');
 const particle_data = require('./particle_data.js');

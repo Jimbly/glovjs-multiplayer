@@ -1,7 +1,7 @@
 /*global Z: false */
 
 const glov_engine = require('./glov/engine.js');
-const local_storage = require('./local_storage.js');
+const local_storage = require('./glov/local_storage.js');
 const net = require('./net.js');
 
 class AccountUI {

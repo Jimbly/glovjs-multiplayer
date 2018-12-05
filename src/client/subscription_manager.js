@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const dot_prop = require('dot-prop');
-const local_storage = require('./local_storage.js');
+const local_storage = require('./glov/local_storage.js');
 
 class ClientChannelWorker {
   constructor(subs, channel_id) {

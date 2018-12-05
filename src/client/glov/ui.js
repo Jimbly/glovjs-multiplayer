@@ -144,6 +144,7 @@ class GlovUI {
 
     this.button_mouseover = false; // for callers to poll the very last button
     this.button_focused = false; // for callers to poll the very last button
+    this.touch_changed_focus = false; // did a touch even this frame change focus?
     // For tracking global mouseover state
     this.last_frame_button_mouseover = false;
     this.frame_button_mouseover = false;
@@ -248,19 +249,24 @@ class GlovUI {
     assert(typeof param.y === 'number');
     assert(typeof param.tooltip === 'string');
 
-    let tooltip_w = 400;
+    let tooltip_w = param.tooltip_width || this.tooltip_width;
+    let x = param.x;
+    if (x + tooltip_w > this.camera.x1()) {
+      x = this.camera.x1() - tooltip_w;
+    }
+    let z = param.z || Z.TOOLTIP;
     let tooltip_y0 = param.y;
-    let tooltip_pad = 8;
+    let tooltip_pad = param.tooltip_pad || this.tooltip_pad;
     let y = tooltip_y0 + tooltip_pad;
     y += this.font.drawSizedWrapped(this.modal_font_style,
-      param.x + tooltip_pad, y, Z.TOOLTIP+1, tooltip_w - tooltip_pad * 2, 0, this.font_height,
+      x + tooltip_pad, y, z+1, tooltip_w - tooltip_pad * 2, 0, this.font_height,
       param.tooltip);
     y += tooltip_pad;
 
     this.panel({
-      x: param.x,
+      x,
       y: tooltip_y0,
-      z: Z.TOOLTIP,
+      z,
       w: tooltip_w,
       h: y - tooltip_y0,
     });
@@ -275,14 +281,28 @@ class GlovUI {
     if (param.disabled) {
       state = 'disabled';
     } else if (glov_input.clickHit(param)) {
-      this.setMouseOver(key);
-      ret = true;
+      if (!param.no_touch_mouseover || !glov_input.mousePosIsTouch()) {
+        this.setMouseOver(key);
+      }
+      if (param.touch_twice && glov_input.mousePosIsTouch() && !focused) {
+        // Just focus, show tooltip
+        this.touch_changed_focus = true;
+      } else {
+        ret = true;
+      }
       if (!param.no_focus) {
         this.focusSteal(key);
+        focused = true;
       }
     } else if (glov_input.isMouseOver(param)) {
-      this.setMouseOver(key);
-      state = glov_input.isMouseDown() ? 'down' : 'rollover';
+      if (param.no_touch_mouseover && glov_input.mousePosIsTouch()) {
+        // do not set mouseover
+      } else if (param.touch_twice && !focused && glov_input.mousePosIsTouch()) {
+        // do not set mouseover
+      } else {
+        this.setMouseOver(key);
+        state = glov_input.isMouseDown() ? 'down' : 'rollover';
+      }
     }
     this.button_focused = focused;
     if (focused) {
@@ -301,6 +321,7 @@ class GlovUI {
         x: param.x,
         y: param.tooltip_above ? param.y - this.font_height * 2 - 16 : param.y + param.h + 2,
         tooltip: param.tooltip,
+        tooltip_width: param.tooltip_width,
       });
     }
     return { ret, state, focused };
@@ -361,11 +382,22 @@ class GlovUI {
     img_scale = Math.min(img_scale, (param.h * 0.75) / img_h);
     img_w *= img_scale;
     img_h *= img_scale;
-    this.draw_list.queue(param.img,
-      param.x + (param.w - img_w) / 2 + img_origin[0] * img_scale,
-      param.y + (param.h - img_h) / 2 + img_origin[1] * img_scale,
-      param.z + 0.1,
-      color, [img_scale, img_scale, 1, 1], param.img_rect);
+    if (param.color1) {
+      this.draw_list.queueDualTint(param.img,
+        param.x + (param.w - img_w) / 2 + img_origin[0] * img_scale,
+        param.y + (param.h - img_h) / 2 + img_origin[1] * img_scale,
+        param.z + 0.1,
+        color, param.color1,
+        [img_scale, img_scale, 1, 1], param.img_rect,
+        param.rotation, param.bucket);
+    } else {
+      this.draw_list.queue(param.img,
+        param.x + (param.w - img_w) / 2 + img_origin[0] * img_scale,
+        param.y + (param.h - img_h) / 2 + img_origin[1] * img_scale,
+        param.z + 0.1,
+        color, [img_scale, img_scale, 1, 1], param.img_rect,
+        param.rotation, param.bucket);
+    }
     return ret;
   }
 
@@ -379,7 +411,8 @@ class GlovUI {
     assert(typeof param.w === 'number');
     assert(typeof param.h === 'number');
     param.z = param.z || (Z.UI - 1);
-    this.drawBox(param, this.sprites.panel, this.panel_pixel_scale, this.color_panel);
+    let color = param.color || this.color_panel;
+    this.drawBox(param, this.sprites.panel, this.panel_pixel_scale, color);
     glov_input.clickHit(param);
     glov_input.isMouseOver(param);
   }
@@ -395,7 +428,7 @@ class GlovUI {
   }
 
   modalDialogRun(modal_dialog) {
-    const button_width = this.button_width / 2;
+    const button_width = modal_dialog.button_width || this.button_width / 2;
     const game_width = this.camera.x1() - this.camera.x0();
     const pad = this.pad;
     const text_w = this.modal_width - pad * 2;
@@ -444,10 +477,10 @@ class GlovUI {
         text: key
       }) || pressed
       ) {
+        this.modal_dialog = null;
         if (modal_dialog.buttons[key]) {
           modal_dialog.buttons[key]();
         }
-        this.modal_dialog = null;
       }
       x += pad + button_width;
     }
@@ -460,10 +493,6 @@ class GlovUI {
       w: this.modal_width,
       h: y - y0,
     });
-
-    this.draw_list.queue(this.sprites.white, this.camera.x0(), this.camera.y0(), Z.MODAL - 2,
-      this.color_modal_darken,
-      [game_width, this.camera.y1() - this.camera.y0(), 1, 1]);
 
     glov_input.eatAllInput();
     this.modal_stealing_focus = true;
@@ -496,6 +525,7 @@ class GlovUI {
     this.focused_this_frame = false;
     this.focused_key_not = null;
     this.modal_stealing_focus = false;
+    this.touch_changed_focus = false;
 
     for (let ii = 0; ii < this.last_frame_edit_boxes.length; ++ii) {
       let edit_box = this.last_frame_edit_boxes[ii];
@@ -513,12 +543,28 @@ class GlovUI {
     }
     this.dom_elems_issued = 0;
 
+    let pp_this_frame = false;
     if (this.modal_dialog || this.menu_up) {
       // Effects during modal dialogs, may need option to disable or customize these
-      glov_engine.queueFrameEffect(Z.MODAL - 2, doBlurEffect);
-      glov_engine.queueFrameEffect(Z.MODAL - 1, doDesaturateEffect);
+      this.draw_list.queue(this.sprites.white, this.camera.x0(), this.camera.y0(), Z.MODAL - 2,
+        this.color_modal_darken,
+        [this.camera.x1() - this.camera.x0(), this.camera.y1() - this.camera.y0(), 1, 1]);
+      if (glov_engine.postprocessing) {
+        glov_engine.queueFrameEffect(Z.MODAL - 2, doBlurEffect);
+        glov_engine.queueFrameEffect(Z.MODAL - 1, doDesaturateEffect);
+        pp_this_frame = true;
+      }
     }
     this.menu_up = false;
+
+    if (!glov_engine.is_loading && glov_engine.getFrameDtActual() > 250 && pp_this_frame) {
+      this.bad_frames = (this.bad_frames || 0) + 1;
+      if (this.bad_frames >= 3) { // 3 in a row, disable superfluous postprocessing
+        glov_engine.postprocessingAllow(false);
+      }
+    } else if (this.bad_frames) {
+      this.bad_frames = 0;
+    }
 
     if (this.modal_dialog) {
       this.modalDialogRun(this.modal_dialog);
@@ -707,6 +753,19 @@ class GlovUI {
       color, 'font_aa', this._spreadTechParams(spread));
   }
 
+  scaleSizes(scale) {
+    this.button_height *= scale;
+    this.font_height *= scale;
+    this.button_width *= scale;
+    this.button_img_size *= scale;
+    this.modal_width *= scale;
+    this.modal_y0 *= scale;
+    this.modal_title_scale *= scale;
+    this.pad *= scale;
+    this.panel_pixel_scale = this.button_height / 13; // button_height / button pixel resolution
+    this.tooltip_width *= scale;
+    this.tooltip_pad *= scale;
+  }
 }
 
 
@@ -720,6 +779,8 @@ GlovUI.prototype.modal_y0 = 200;
 GlovUI.prototype.modal_title_scale = 1.2;
 GlovUI.prototype.pad = 16;
 GlovUI.prototype.panel_pixel_scale = 32 / 13; // button_height / button pixel resolution
+GlovUI.prototype.tooltip_width = 400;
+GlovUI.prototype.tooltip_pad = 8;
 
 GlovUI.prototype.font_style_focused = glov_font.style(null, {
   color: 0x000000ff,

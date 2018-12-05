@@ -1,5 +1,5 @@
 const glov_engine = require('./glov/engine.js');
-const local_storage = require('./local_storage.js');
+const local_storage = require('./glov/local_storage.js');
 const subscription_manager = require('./subscription_manager.js');
 const WSClient = require('./wsclient.js').WSClient;
 
