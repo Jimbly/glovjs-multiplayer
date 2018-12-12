@@ -3,13 +3,13 @@
 /*global Z: false */
 
 const cmd_parse = require('../common/cmd_parse.js').create();
-const local_storage = require('./glov/local_storage.js');
+const glov_local_storage = require('./glov/local_storage.js');
 const net = require('./net.js');
 const net_position_manager = require('./net_position_manager.js');
 const particle_data = require('./particle_data.js');
 const shaders = require('./shaders.js');
 
-local_storage.storage_prefix = 'glovjs-multiplayer';
+glov_local_storage.storage_prefix = 'glovjs-multiplayer';
 
 window.Z = window.Z || {};
 Z.BACKGROUND = 0;
