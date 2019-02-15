@@ -10,12 +10,25 @@ class ClientChannelWorker {
     this.channel_id = channel_id;
     this.subscriptions = 0;
     this.on_channel_data = null;
+    this.on_subscribe = null;
+    this.got_subscribe = false;
     this.handlers = {};
     this.data = {};
     this.onMsg('channel_data', this.handleChannelData.bind(this));
     this.onMsg('apply_channel_data', this.handleApplyChannelData.bind(this));
     this.logged_in = false;
     this.logging_in = false;
+  }
+
+  // cb()
+  onSubscribe(cb) {
+    assert(!this.on_subscribe || !cb); // This should really be EventEmitter-based?
+    assert(this.subscriptions);
+    if (!this.got_subscribe) {
+      this.on_subscribe = cb;
+      return;
+    }
+    cb();
   }
 
   // cb(data [, mod_key, mod_value]);
@@ -29,6 +42,11 @@ class ClientChannelWorker {
     this.data = data;
     if (this.on_channel_data) {
       this.on_channel_data(this.data);
+    }
+    this.got_subscribe = true;
+    if (this.on_subscribe) {
+      this.on_subscribe();
+      this.on_subscribe = null;
     }
     resp_func();
   }
@@ -167,6 +185,10 @@ class SubscriptionManager {
     return channel;
   }
 
+  getUserId() {
+    return this.loggedIn();
+  }
+
   getMyUserChannel() {
     let user_id = this.loggedIn();
     if (!user_id) {
@@ -180,6 +202,9 @@ class SubscriptionManager {
     assert(channel);
     assert(channel.subscriptions);
     channel.subscriptions--;
+    if (!channel.subscriptions) {
+      channel.got_subscribe = false;
+    }
     if (this.connected && !channel.subscriptions) {
       this.client.send('unsubscribe', channel_id);
     }

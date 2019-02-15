@@ -2,6 +2,7 @@
 
 const glov_engine = require('./glov/engine.js');
 const util = require('../common/util.js');
+const { max, min } = Math;
 
 const valid_options = [
   // Numeric parameters
@@ -245,4 +246,49 @@ NetPositionManager.prototype.default_pos = VMath.v2BuildZero();
 
 export function create(...args) {
   return new NetPositionManager(...args);
+}
+
+
+class ScalarInterpolator {
+  constructor(tick_time) {
+    this.tick_time = tick_time;
+    this.reset();
+  }
+
+  reset() {
+    this.value = undefined;
+    this.target_value = undefined;
+    this.vel = 0;
+  }
+
+  // Assume any change happened on the server at frequency tick_time
+  // Updates state.value and also returns it
+  update(dt, new_value) {
+    if (this.value === undefined) {
+      this.value = new_value;
+      this.target_value = new_value;
+      return;
+    }
+    // TODO: Could figure expected velocity and use logic like in updateOtherClient
+    if (new_value !== this.target_value) {
+      // try to get there in tick_time
+      this.vel = (new_value - this.value) / this.tick_time;
+      this.target_value = new_value;
+    }
+    if (this.value !== this.target_value) {
+      if (this.vel > 0) {
+        this.value = min(this.value + this.vel * dt, this.target_value);
+      } else {
+        this.value = max(this.value + this.vel * dt, this.target_value);
+      }
+    }
+  }
+
+  getValue() {
+    return this.value;
+  }
+}
+
+export function createScalarInterpolator(...args) {
+  return new ScalarInterpolator(...args);
 }

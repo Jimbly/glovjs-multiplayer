@@ -102,6 +102,8 @@ export function main(canvas) {
   let test_room;
 
   function test(dt) {
+    // Allow focusing the canvas, and before chat.
+    glov_ui.focusCheck('canvas');
 
     if (!test_room) {
       test_room = net.subs.getChannel('test.test', true);

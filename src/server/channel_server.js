@@ -3,6 +3,8 @@ const cmd_parse = require('../common/cmd_parse.js');
 const default_workers = require('./default_workers.js');
 const dot_prop = require('dot-prop');
 
+const { max } = Math;
+
 let cmd_parse_system = cmd_parse.create(); // always empty?
 
 function noop() {
@@ -10,6 +12,9 @@ function noop() {
 }
 
 function logdata(data) {
+  if (data === undefined) {
+    return '';
+  }
   let r = JSON.stringify(data);
   if (r.length < 80) {
     return r;
@@ -455,7 +460,7 @@ class ChannelServer {
   doTick() {
     setTimeout(this.tick_func, this.tick_time);
     let now = Date.now();
-    let dt = now - this.last_tick_timestamp;
+    let dt = max(0, now - this.last_tick_timestamp);
     this.last_tick_timestamp = now;
     if (dt > this.tick_time * 2) {
       // large stall, discard extra time
