@@ -134,6 +134,19 @@ let textureeffects_cgfx = {
         'programs': ['vp_copy', 'fp_copy']
       }
     ],
+    'pixelyExpand': [
+      {
+        'parameters': ['clipSpace', 'copyUVScale', 'inputTexture0'],
+        'semantics': ['ATTR0'/*, 'ATTR8'*/],
+        'states': {
+          'DepthTestEnable': false,
+          'DepthMask': false,
+          'CullFaceEnable': false,
+          'BlendEnable': false
+        },
+        'programs': ['vp_copy', 'fp_pixely_expand']
+      }
+    ],
     'copyColorMatrix': [
       {
         'parameters': ['clipSpace', 'copyUVScale', 'colorMatrix', 'inputTexture0'],
@@ -198,6 +211,10 @@ let textureeffects_cgfx = {
     'fp_copy': {
       'type': 'fragment',
       'code': fs.readFileSync(`${__dirname}/../shaders/effects_copy.fp`, 'utf8'),
+    },
+    'fp_pixely_expand': {
+      'type': 'fragment',
+      'code': fs.readFileSync(`${__dirname}/../shaders/pixely_expand.fp`, 'utf8'),
     },
     'fp_gaussian_blur': {
       'type': 'fragment',
@@ -324,6 +341,7 @@ export class TextureEffects {
     this.bloomMergeTechnique = shader.getTechnique('bloomMerge');
     this.gaussianBlurTechnique = shader.getTechnique('gaussianBlur');
     this.copyTechnique = shader.getTechnique('copy');
+    this.pixelyExpandTechnique = shader.getTechnique('pixelyExpand');
   }
 
   grayScaleMatrix(dst) {
@@ -561,6 +579,28 @@ export class TextureEffects {
     return true;
   }
 
+  applyCopy(params) {
+    let source = params.source;
+    let effectParams = this.effectParams;
+    let techparams = this.copyParameters;
+    effectParams.technique = this.copyTechnique;
+    effectParams.params = techparams;
+    techparams.inputTexture0 = source;
+
+    this.applyEffect(effectParams);
+  }
+
+  applyPixelyExpand(params) {
+    let source = params.source;
+    let effectParams = this.effectParams;
+    let techparams = this.copyParameters;
+    effectParams.technique = this.pixelyExpandTechnique;
+    effectParams.params = techparams;
+    techparams.inputTexture0 = source;
+
+    this.applyEffect(effectParams);
+  }
+
   applyGaussianBlur(params) {
     let gd = this.graphicsDevice;
     let source = params.source;
@@ -575,14 +615,15 @@ export class TextureEffects {
     effectParams.params = techparams;
     techparams.inputTexture0 = source;
 
+    let viewport = gd.getViewport();
     let res = max_size;
-    while (res > gd.width || res > gd.height) {
+    while (res > (viewport[2] - viewport[0]) || res > (viewport[3] - viewport[1])) {
       res /= 2;
     }
 
     while (res > min_size) {
       this.applyEffect(effectParams, res, res);
-      techparams.inputTexture0 = glov_engine.captureFramebuffer(res, res);
+      techparams.inputTexture0 = glov_engine.captureFramebuffer(null, res, res);
       res /= 2;
     }
 
@@ -596,7 +637,7 @@ export class TextureEffects {
     techparams.sampleRadius[1] = 0;
     techparams.inputTexture0 = this.copyParameters.inputTexture0;
     this.applyEffect(effectParams, res, res);
-    let blur = glov_engine.captureFramebuffer(res, res);
+    let blur = glov_engine.captureFramebuffer(null, res, res);
 
     techparams.sampleRadius[0] = 0;
     techparams.sampleRadius[1] = sampleRadius;
@@ -714,8 +755,9 @@ export class TextureEffects {
   applyEffect(effect, view_w, view_h) {
     let graphicsDevice = this.graphicsDevice;
 
-    let target_w = graphicsDevice.width;
-    let target_h = graphicsDevice.height;
+    let viewport = graphicsDevice.getViewport();
+    let target_w = viewport[2] - viewport[0]; // graphicsDevice.width;
+    let target_h = viewport[3] - viewport[1]; // graphicsDevice.height;
     view_w = view_w || target_w;
     view_h = view_h || target_h;
     let clipOffsetX = -1.0;
