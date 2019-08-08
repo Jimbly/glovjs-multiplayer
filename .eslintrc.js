@@ -10,6 +10,11 @@ module.exports = {
     // Just the super-common ones, don't mask undefined variables named "status", etc
     "window": true,
     "document": true,
+    "Blob": true,
+    "Image": true,
+    "FileReader": true,
+    "gl": true,
+    "Z": true,
   },
   "extends": "eslint:recommended",
   "parserOptions": {
@@ -18,7 +23,7 @@ module.exports = {
   },
   "rules": {
     "accessor-pairs": "error",
-    "array-bracket-newline": "error",
+    "array-bracket-newline": ["error", "consistent"], // JE
     "array-bracket-spacing": ignore_style ? "off" : [
       "error",
       "never"
@@ -193,6 +198,7 @@ module.exports = {
     "no-confusing-arrow": "error",
     "no-console": "off", // JE
     "no-const-assign": "error",
+    "no-constant-condition": "off", // JE
     "no-control-regex": "error",
     "no-continue": "off", // JE
     "no-debugger": "error",

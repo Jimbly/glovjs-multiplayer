@@ -2,13 +2,12 @@
 const assert = require('assert');
 const glov_engine = require('./engine.js');
 const glov_font = require('./font.js');
+const glov_input = require('./input.js');
 const glov_simple_menu = require('./simple_menu.js');
 const glov_selection_box = require('./selection_box.js');
+const glov_ui = require('./ui.js');
 
 const { ceil, random } = Math;
-
-let glov_ui;
-let glov_input;
 
 let demo_menu;
 let demo_menu_up = false;
@@ -20,10 +19,8 @@ let edit_box1;
 let edit_box2;
 let test_select1;
 let test_select2;
+let slider_value = 1;
 function init(x, y, column_width) {
-  glov_ui = glov_engine.glov_ui;
-  glov_input = glov_engine.glov_input;
-
   edit_box1 = glov_ui.createEditBox({
     x: x + column_width,
     y: y,
@@ -73,8 +70,8 @@ function init(x, y, column_width) {
 
 export function run(x, y, z) {
   z = z || Z.UI;
-  let line_height = glov_engine.glov_ui.button_height + 2;
-  let column_width = glov_engine.glov_ui.button_width + 8;
+  let line_height = glov_ui.button_height + 2;
+  let column_width = glov_ui.button_width + 8;
   if (inited !== `${x}_${y}_${column_width}`) {
     init(x, y, column_width);
     inited = `${x}_${y}_${column_width}`;
@@ -144,6 +141,14 @@ export function run(x, y, z) {
 
   y += test_select1.run({ x, y, z });
   y += test_select2.run({ x, y, z });
+
+  slider_value = glov_ui.slider(slider_value, {
+    x, y, z,
+    min: 0,
+    max: 2,
+  });
+  glov_ui.print(null, x + glov_ui.button_width + pad, y, z, `${slider_value.toFixed(2)}`);
+  y += glov_ui.button_height;
 }
 
 export function runFontTest(x, y) {
@@ -154,7 +159,7 @@ export function runFontTest(x, y) {
   let z = Z.UI;
   let font = glov_engine.font;
 
-  let font_size = glov_engine.glov_ui.font_height * 2;
+  let font_size = glov_ui.font_height * 2;
   font.drawSized(null, x, y, z, font_size, `Default ${font_size} ${random().toFixed(7)}`);
   y += font_size;
   font.drawSized(null, x, y, z, font_size / 2, `Default ${font_size / 2} Lorem ipsum dolor sit amet`);

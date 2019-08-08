@@ -1,15 +1,23 @@
 /*eslint global-require:off*/
-/*global VMath: false */
 /*global Z: false */
 
 const cmd_parse = require('../common/cmd_parse.js').create();
-const glov_local_storage = require('./glov/local_storage.js');
+const glov_engine = require('./glov/engine.js');
+const glov_font = require('./glov/font.js');
+const fs = require('fs');
+const input = require('./glov/input.js');
+const local_storage = require('./glov/local_storage.js');
 const net = require('./net.js');
 const net_position_manager = require('./net_position_manager.js');
-const particle_data = require('./particle_data.js');
-const shaders = require('./shaders.js');
+const particles = require('./glov/particles.js');
+const shaders = require('./glov/shaders.js');
+const glov_sprites = require('./glov/sprites.js');
+const sprite_animation = require('./glov/sprite_animation.js');
+const ui = require('./glov/ui.js');
 
-glov_local_storage.storage_prefix = 'glovjs-multiplayer';
+const particle_data = require('./particle_data.js');
+const { vec2, vec4, v4copy } = require('./glov/vmath.js');
+local_storage.storage_prefix = 'glovjs-multiplayer';
 
 window.Z = window.Z || {};
 Z.BACKGROUND = 0;
@@ -30,55 +38,59 @@ export const game_height = 960;
 
 export let sprites = {};
 
-export function main(canvas) {
+export function main() {
   net.init();
-  const glov_engine = require('./glov/engine.js');
-  const glov_font = require('./glov/font.js');
 
-  glov_engine.startup({
-    canvas,
-    shaders,
+  if (!glov_engine.startup({
     game_width,
     game_height,
     pixely: false,
-  });
+  })) {
+    return;
+  }
+
+  const test_shader = shaders.create(gl.FRAGMENT_SHADER, fs.readFileSync(`${__dirname}/shaders/test.fp`, 'utf8'));
 
   const sound_manager = glov_engine.sound_manager;
-  // const glov_camera = glov_engine.glov_camera;
-  const glov_input = glov_engine.glov_input;
-  const glov_sprite = glov_engine.glov_sprite;
-  const glov_ui = glov_engine.glov_ui;
-  const draw_list = glov_engine.draw_list;
   // const font = glov_engine.font;
 
 
-  const createSpriteSimple = glov_sprite.createSpriteSimple.bind(glov_sprite);
-  const createAnimation = glov_sprite.createAnimation.bind(glov_sprite);
+  const createSprite = glov_sprites.create;
+  const createAnimation = sprite_animation.create;
 
   app.account_ui = require('./account_ui.js').create();
   app.chat_ui = require('./chat_ui.js').create(cmd_parse);
 
-  const color_white = VMath.v4Build(1, 1, 1, 1);
-  const color_gray = VMath.v4Build(0.5, 0.5, 0.5, 1);
-  const color_red = VMath.v4Build(1, 0, 0, 1);
-  const color_yellow = VMath.v4Build(1, 1, 0, 1);
+  const color_white = vec4(1, 1, 1, 1);
+  const color_gray = vec4(0.5, 0.5, 0.5, 1);
+  const color_red = vec4(1, 0, 0, 1);
+  const color_yellow = vec4(1, 1, 0, 1);
 
-  // Cache key_codes
-  const key_codes = glov_input.key_codes;
-  const pad_codes = glov_input.pad_codes;
+  // Cache KEYS
+  const KEYS = input.KEYS;
+  const pad_codes = input.pad_codes;
 
   const sprite_size = 64;
   function initGraphics() {
-    glov_sprite.preloadParticleData(particle_data);
+    particles.preloadParticleData(particle_data);
 
     sound_manager.loadSound('test');
 
-    const origin_0_0 = glov_sprite.origin_0_0;
+    sprites.white = createSprite({ url: 'white' });
 
-    sprites.white = createSpriteSimple('white', 1, 1, origin_0_0);
-
-    sprites.test = createSpriteSimple('test.png', sprite_size, sprite_size);
-    sprites.test_tint = createSpriteSimple('tinted', [16, 16, 16, 16], [16, 16, 16], { layers: 2 });
+    sprites.test = createSprite({
+      name: 'test',
+      size: vec2(sprite_size, sprite_size),
+      origin: vec2(0.5, 0.5),
+    });
+    sprites.test_tint = createSprite({
+      name: 'tinted',
+      ws: [16, 16, 16, 16],
+      hs: [16, 16, 16],
+      size: vec2(sprite_size, sprite_size),
+      layers: 2,
+      origin: vec2(0.5, 0.5),
+    });
     sprites.animation = createAnimation({
       idle_left: {
         frames: [0,1],
@@ -91,10 +103,9 @@ export function main(canvas) {
     });
     sprites.animation.setState('idle_left');
 
-    sprites.game_bg = createSpriteSimple('white', 2, 2, {
-      width: game_width,
-      height: game_height,
-      origin: [0, 0],
+    sprites.game_bg = createSprite({
+      url: 'white',
+      size: vec2(game_width, game_height),
     });
   }
 
@@ -103,7 +114,7 @@ export function main(canvas) {
 
   function test(dt) {
     // Allow focusing the canvas, and before chat.
-    glov_ui.focusCheck('canvas');
+    ui.focusCheck('canvas');
 
     if (!test_room) {
       test_room = net.subs.getChannel('test.test', true);
@@ -118,7 +129,7 @@ export function main(canvas) {
     app.account_ui.showLogin();
 
     if (!test.color_sprite) {
-      test.color_sprite = VMath.v4Copy(color_white);
+      test.color_sprite = v4copy(vec4(), color_white);
       test.character = {
         x: (Math.random() * (game_width - sprite_size) + (sprite_size * 0.5)),
         y: (Math.random() * (game_height - sprite_size) + (sprite_size * 0.5)),
@@ -128,23 +139,23 @@ export function main(canvas) {
 
     test.character.dx = 0;
     test.character.dy = 0;
-    if (glov_input.isKeyDown(key_codes.LEFT) || glov_input.isKeyDown(key_codes.A) ||
-      glov_input.isPadButtonDown(pad_codes.LEFT)
+    if (input.keyDown(KEYS.LEFT) || input.keyDown(KEYS.A) ||
+      input.padButtonDown(pad_codes.LEFT)
     ) {
       test.character.dx = -1;
       sprites.animation.setState('idle_left');
-    } else if (glov_input.isKeyDown(key_codes.RIGHT) || glov_input.isKeyDown(key_codes.D) ||
-      glov_input.isPadButtonDown(pad_codes.RIGHT)
+    } else if (input.keyDown(KEYS.RIGHT) || input.keyDown(KEYS.D) ||
+      input.padButtonDown(pad_codes.RIGHT)
     ) {
       test.character.dx = 1;
       sprites.animation.setState('idle_right');
     }
-    if (glov_input.isKeyDown(key_codes.UP) || glov_input.isKeyDown(key_codes.W) ||
-      glov_input.isPadButtonDown(pad_codes.UP)
+    if (input.keyDown(KEYS.UP) || input.keyDown(KEYS.W) ||
+      input.padButtonDown(pad_codes.UP)
     ) {
       test.character.dy = -1;
-    } else if (glov_input.isKeyDown(key_codes.DOWN) || glov_input.isKeyDown(key_codes.S) ||
-      glov_input.isPadButtonDown(pad_codes.DOWN)
+    } else if (input.keyDown(KEYS.DOWN) || input.keyDown(KEYS.S) ||
+      input.padButtonDown(pad_codes.DOWN)
     ) {
       test.character.dy = 1;
     }
@@ -157,24 +168,24 @@ export function main(canvas) {
       w: sprite_size,
       h: sprite_size,
     };
-    if (glov_input.isMouseDown() && glov_input.isMouseOver(bounds)) {
-      VMath.v4Copy(color_yellow, test.color_sprite);
-    } else if (glov_input.clickHit(bounds)) {
-      VMath.v4Copy((test.color_sprite[2] === 0) ? color_white : color_red, test.color_sprite);
+    if (input.mouseDown() && input.mouseOver(bounds)) {
+      v4copy(test.color_sprite, color_yellow);
+    } else if (input.click(bounds)) {
+      v4copy(test.color_sprite, (test.color_sprite[2] === 0) ? color_white : color_red);
       sound_manager.play('test');
-    } else if (glov_input.isMouseOver(bounds)) {
-      VMath.v4Copy(color_white, test.color_sprite);
+    } else if (input.mouseOver(bounds)) {
+      v4copy(test.color_sprite, color_white);
       test.color_sprite[3] = 0.5;
     } else {
-      VMath.v4Copy(color_white, test.color_sprite);
+      v4copy(test.color_sprite, color_white);
       test.color_sprite[3] = 1;
     }
 
-    app.sprites.game_bg.drawTech({
+    sprites.game_bg.draw({
       x: 0, y: 0, z: Z.BACKGROUND,
       color: [0.5, 0.6, 0.7, 1],
-      bucket: 'test',
-      tech_params: {
+      shader: test_shader,
+      shader_params: {
         params: [1.0, 1.0, 1.0, glov_engine.getFrameTimestamp() * 0.0005 % 1000],
       },
     });
@@ -200,12 +211,13 @@ export function main(canvas) {
       let other_client = room_clients[client_id];
       if (other_client.pos && other_client.ids) {
         let pos = pos_manager.updateOtherClient(client_id, dt);
-        draw_list.queue(sprites.test,
-          pos[0], pos[1], Z.SPRITES - 1,
-          color_gray, [sprite_size, sprite_size], null, 0, 'alpha');
-        glov_ui.font.drawSizedAligned(glov_font.styleColored(null, 0x00000080),
+        sprites.test.draw({
+          x: pos[0], y: pos[1], z: Z.SPRITES - 1,
+          color: color_gray,
+        });
+        ui.font.drawSizedAligned(glov_font.styleColored(null, 0x00000080),
           pos[0], pos[1] - 64, Z.SPRITES - 1,
-          glov_ui.font_height, glov_font.ALIGN.HCENTER, 0, 0,
+          ui.font_height, glov_font.ALIGN.HCENTER, 0, 0,
           other_client.ids.display_name || `client_${client_id}`);
       }
     }

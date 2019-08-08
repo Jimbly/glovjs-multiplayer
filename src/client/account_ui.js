@@ -1,12 +1,12 @@
 /*global Z: false */
 
-const glov_engine = require('./glov/engine.js');
+const camera2d = require('./glov/camera2d.js');
 const local_storage = require('./glov/local_storage.js');
 const net = require('./net.js');
+const glov_ui = require('./glov/ui.js');
 
 class AccountUI {
   constructor() {
-    let glov_ui = glov_engine.glov_ui;
     this.edit_box_name = glov_ui.createEditBox({
       placeholder: 'Username',
       initial_focus: true,
@@ -20,11 +20,10 @@ class AccountUI {
   }
 
   showLogin() {
-    let glov_ui = glov_engine.glov_ui;
     let edit_box_name = this.edit_box_name;
     let edit_box_password = this.edit_box_password;
-    let x = glov_ui.camera.x0() + 10;
-    let y = glov_ui.camera.y0() + 10;
+    let x = camera2d.x0() + 10;
+    let y = camera2d.y0() + 10;
     if (!net.subs.loggedIn()) {
       let submit = false;
       let w = 100;

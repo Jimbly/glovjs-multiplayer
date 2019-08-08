@@ -1,15 +1,15 @@
 /*global Z: false */
 
-const glov_engine = require('./glov/engine.js');
+const camera2d = require('./glov/camera2d.js');
 const glov_font = require('./glov/font.js');
+const input = require('./glov/input.js');
+const ui = require('./glov/ui.js');
 const net = require('./net.js');
-let glov_ui;
-let glov_input;
 
 class ChatUI {
   constructor(cmd_parse) {
     this.cmd_parse = cmd_parse;
-    this.edit_text_entry = glov_ui.createEditBox({
+    this.edit_text_entry = ui.createEditBox({
       placeholder: 'Chatbox',
       initial_focus: false,
       text: '',
@@ -45,11 +45,11 @@ class ChatUI {
 
   runLate() {
     this.did_run_late = true;
-    if (glov_input.keyDownHit(glov_input.key_codes.RETURN)) {
+    if (input.keyDownEdge(input.KEYS.RETURN)) {
       this.edit_text_entry.focus();
     }
-    if (glov_input.keyDownHit(glov_input.key_codes.SLASH) ||
-      glov_input.keyDownHit(glov_input.key_codes.NUMPAD_DIVIDE)
+    if (input.keyDownEdge(input.KEYS.SLASH) ||
+      input.keyDownEdge(input.KEYS.NUMPAD_DIVIDE)
     ) {
       this.edit_text_entry.focus();
       this.edit_text_entry.setText('/');
@@ -61,11 +61,11 @@ class ChatUI {
       this.runLate();
     }
     this.did_run_late = false;
-    let x = glov_ui.camera.x0() + 10;
-    let y0 = glov_ui.camera.y1();
+    let x = camera2d.x0() + 10;
+    let y0 = camera2d.y1();
     let y = y0;
-    let w = (glov_ui.camera.x1() - glov_ui.camera.x0()) / 2;
-    if (net.subs.loggedIn() && !(glov_ui.modal_dialog || glov_ui.menu_up)) {
+    let w = (camera2d.x1() - camera2d.x0()) / 2;
+    if (net.subs.loggedIn() && !(ui.modal_dialog || ui.menu_up)) {
       y -= 40;
       if (this.edit_text_entry.run({ x, y, w }) === this.edit_text_entry.SUBMIT) {
         let text = this.edit_text_entry.getText();
@@ -92,7 +92,7 @@ class ChatUI {
           }
           this.edit_text_entry.setText('');
         } else {
-          glov_ui.focusCanvas();
+          ui.focusCanvas();
         }
       }
     }
@@ -105,13 +105,13 @@ class ChatUI {
     for (let ii = 0; ii < Math.min(this.msgs.length, this.max_messages); ++ii) {
       let line = this.msgs[this.msgs.length - ii - 1];
       numlines = 0;
-      glov_ui.font.wrapLines(w, indent, glov_ui.font_height, line, wordCallback);
-      y -= glov_ui.font_height * (numlines + 1);
-      glov_ui.font.drawSizedWrapped(this.font_style, x, y, Z.CHAT + 1, w, indent, glov_ui.font_height, line);
+      ui.font.wrapLines(w, indent, ui.font_height, line, wordCallback);
+      y -= ui.font_height * (numlines + 1);
+      ui.font.drawSizedWrapped(this.font_style, x, y, Z.CHAT + 1, w, indent, ui.font_height, line);
     }
 
     let border = 8;
-    glov_ui.drawRect(x - border, y - border, x + w + border + 8, y0, Z.CHAT, [1,1,1,0.2]);
+    ui.drawRect(x - border, y - border, x + w + border + 8, y0, Z.CHAT, [1,1,1,0.2]);
   }
 
   setChannel(channel) {
@@ -133,9 +133,5 @@ class ChatUI {
 }
 
 export function create(...args) {
-  if (!glov_ui) {
-    glov_ui = glov_engine.glov_ui;
-    glov_input = glov_engine.glov_input;
-  }
   return new ChatUI(...args);
 }
