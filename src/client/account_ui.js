@@ -1,5 +1,3 @@
-/*global Z: false */
-
 const camera2d = require('./glov/camera2d.js');
 const local_storage = require('./glov/local_storage.js');
 const net = require('./net.js');

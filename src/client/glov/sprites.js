@@ -195,7 +195,7 @@ export function queuesprite(sprite, x, y, z, w, h, rot, uvs, color, shader, shad
   let ubias = 0;
   let vbias = 0;
   let tex = elem.texs[0];
-  if (!nozoom) {
+  if (!nozoom && !tex.nozoom) {
     // Bias the texture coordinates depending on the minification/magnification
     //   level so we do not get pixels from neighboring frames bleeding in
     // Use min here (was max in libGlov), to solve tooltip edges being wrong in strict pixely
@@ -204,23 +204,27 @@ export function queuesprite(sprite, x, y, z, w, h, rot, uvs, color, shader, shad
     let zoom_level = max(
       (uvs[2] - uvs[0]) * tex.width / w,
       (uvs[3] - uvs[1]) * tex.height / h,
-    );
-    if (zoom_level < 1) {
+    ); // in texels per pixel
+    if (zoom_level < 1) { // magnification
       if (tex.filter_mag === gl.LINEAR) {
+        // Need to bias by half a texel, so we're doing absolutely no blending with the neighboring texel
         ubias = vbias = 0.5;
+      } else if (tex.filter_mag === gl.NEAREST && engine.antialias) {
+        // When antialiasing is on, even nearest sampling samples from adjacent texels, do slight bias
+        // Want to bias by one *pixel's* worth
+        ubias = vbias = zoom_level / 2;
       }
-    } else if (zoom_level > 1) {
+    } else if (zoom_level > 1) { // minification
       // need to apply this bias even with nearest filtering, not exactly sure why
       let mipped_texels = zoom_level / 2;
       ubias = vbias = 0.5 + mipped_texels;
 
-      // Maybe need this on magnification above too?
-      if (uvs[0] > uvs[2]) {
-        ubias *= -1;
-      }
-      if (uvs[1] > uvs[3]) {
-        vbias *= -1;
-      }
+    }
+    if (uvs[0] > uvs[2]) {
+      ubias *= -1;
+    }
+    if (uvs[1] > uvs[3]) {
+      vbias *= -1;
     }
   }
 
@@ -453,7 +457,7 @@ export function draw() {
   }
 }
 
-function buildRects(ws, hs) {
+export function buildRects(ws, hs) {
   let rects = [];
   let total_w = 0;
   for (let ii = 0; ii < ws.length; ++ii) {
@@ -527,6 +531,13 @@ function Sprite(params) {
   this.size = params.size || vec2(1, 1);
   this.color = params.color || vec4(1,1,1,1);
   this.uvs = params.uvs || vec4(0, 0, 1, 1);
+  if (!params.uvs) {
+    // Fix up non-power-of-two textures
+    this.texs[0].onLoad((tex) => {
+      this.uvs[2] = tex.src_width / tex.width;
+      this.uvs[3] = tex.src_height / tex.height;
+    });
+  }
 
   if (params.ws) {
     this.uidata = buildRects(params.ws, params.hs);

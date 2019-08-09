@@ -34,6 +34,7 @@ export let sound_manager;
 export let width;
 export let height;
 export let pixel_aspect = 1;
+export let antialias;
 let clear_bits;
 
 export let game_width;
@@ -353,6 +354,8 @@ function tick() {
   // gl.scissor(0, 0, viewport[2] - viewport[0], viewport[3] - viewport[1]);
   gl.clear(clear_bits);
 
+  gl.disable(gl.CULL_FACE); // Need to enable this before 3D drawing!
+
   sprites.draw();
 
   glov_ui.endFrame();
@@ -426,7 +429,7 @@ export function startup(params) {
   resizeCanvas();
 
   let is_pixely = params.pixely && params.pixely !== 'off';
-  let antialias = params.antialias || !is_pixely && params.antialias !== false;
+  antialias = params.antialias || !is_pixely && params.antialias !== false;
   let context_names = ['webgl', 'experimental-webgl'];
   let context_opt = { antialias };
   let good = false;
@@ -469,7 +472,6 @@ export function startup(params) {
 
   gl.depthFunc(gl.LEQUAL);
   // gl.enable(gl.SCISSOR_TEST);
-  gl.enable(gl.CULL_FACE);
   gl.cullFace(gl.BACK);
   gl.clearColor(0, 0.1, 0.2, 1);
 
@@ -498,7 +500,7 @@ export function startup(params) {
   });
   camera2d.startup();
   sprites.startup();
-  input.startup(canvas);
+  input.startup(canvas, params);
   if (any_3d) {
     models.startup();
   }

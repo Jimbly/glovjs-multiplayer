@@ -1,5 +1,3 @@
-/*global Z: false */
-
 const camera2d = require('./glov/camera2d.js');
 const glov_font = require('./glov/font.js');
 const input = require('./glov/input.js');

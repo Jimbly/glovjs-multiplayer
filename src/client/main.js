@@ -1,5 +1,4 @@
 /*eslint global-require:off*/
-/*global Z: false */
 
 const cmd_parse = require('../common/cmd_parse.js').create();
 const glov_engine = require('./glov/engine.js');

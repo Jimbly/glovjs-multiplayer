@@ -1,8 +1,9 @@
-/* global VMath */
-
 const glov_engine = require('./glov/engine.js');
 const util = require('../common/util.js');
-const { max, min } = Math;
+const { max, min, sqrt } = Math;
+const {
+  vec2, v2copy, v2distSq, v2lengthSq, v2scale, v2sub,
+} = require('./glov/vmath.js');
 
 const valid_options = [
   // Numeric parameters
@@ -34,7 +35,7 @@ class NetPositionManager {
     this.client_id = options.client_id;
 
     this.last_send = {
-      pos: VMath.v2Build(-1, -1),
+      pos: vec2(-1, -1),
       sending: false,
       send_time: 0,
     };
@@ -82,14 +83,14 @@ class NetPositionManager {
 
     const me = this.channel.getChannelData(`public.clients.${this.client_id}`, {});
     if (!me.pos || !me.pos.cur || typeof me.pos.cur[0] !== 'number') {
-      VMath.v2Copy(this.default_pos, this.last_send.pos);
+      v2copy(this.last_send.pos, this.default_pos);
       this.channel.setChannelData(`public.clients.${this.client_id}.pos`, {
         cur: [this.last_send.pos[0], this.last_send.pos[1]], // Do not send as F32Array
       });
       on_pos_set_cb(this.default_pos);
       this.ever_received_character = true;
     } else if (!this.ever_received_character) {
-      VMath.v2Copy(me.pos.cur, this.last_send.pos);
+      v2copy(this.last_send.pos, me.pos.cur);
       on_pos_set_cb(me.pos.cur);
       this.ever_received_character = true;
     }
@@ -109,7 +110,7 @@ class NetPositionManager {
         this.last_send.speed = 0;
         if (this.last_send.send_time) {
           const time = now - this.last_send.send_time;
-          this.last_send.speed = VMath.v2Distance(this.last_send.pos, character_pos) / time;
+          this.last_send.speed = sqrt(v2distSq(this.last_send.pos, character_pos)) / time;
         }
         this.last_send.send_time = now;
         this.last_send.pos[0] = character_pos[0];
@@ -142,41 +143,41 @@ class NetPositionManager {
     let pcd = this.per_client_data[client_id];
     if (!pcd) {
       pcd = this.per_client_data[client_id] = {}; // eslint-disable-line no-multi-assign
-      pcd.pos = VMath.v2Copy(client_pos.cur);
+      pcd.pos = v2copy(vec2(), client_pos.cur);
       pcd.net_speed = 0;
-      pcd.net_pos = VMath.v2Copy(client_pos.cur);
-      pcd.impulse = VMath.v2BuildZero();
+      pcd.net_pos = v2copy(vec2(), client_pos.cur);
+      pcd.impulse = vec2();
       pcd.net_state = 'idle_down';
       pcd.anim_state = 'idle_down';
     }
     if (client_pos.state) {
       pcd.net_state = client_pos.state;
     }
-    VMath.v2Copy(client_pos.cur, pcd.net_pos);
+    v2copy(pcd.net_pos, client_pos.cur);
     pcd.net_speed = client_pos.speed;
 
     // This interpolation logic taken from Splody
     // Doesn't do great with physics-based jumps though
-    const delta = VMath.v2Sub(pcd.net_pos, pcd.pos);
-    const dist = VMath.v2Length(delta);
+    const delta = v2sub(vec2(), pcd.net_pos, pcd.pos);
+    const dist = sqrt(v2lengthSq(delta));
 
     if (dist > 0) {
       const time_to_dest = dist / pcd.net_speed;
       if (time_to_dest < this.send_time + this.window) {
         // Would get there in the expected time, use this speed
-        VMath.v2ScalarMul(delta, pcd.net_speed / dist, pcd.impulse);
+        v2scale(pcd.impulse, delta, pcd.net_speed / dist);
       } else if (time_to_dest < this.send_time + this.window * this.smooth_windows) { // 0.5s
         // We'll could be there in under half a second, try to catch up smoothly
         // Using provided speed is too slow, go faster, though no slower than we were going
         // (in case this is the last of multiple delayed updates and the last update was going a tiny distance slowly)
-        const old_speed = VMath.v2Length(pcd.impulse);
+        const old_speed = sqrt(v2lengthSq(pcd.impulse));
         const specified_speed = pcd.net_speed;
         const new_speed = Math.max(specified_speed * this.smooth_factor, old_speed);
-        VMath.v2ScalarMul(delta, new_speed / dist, pcd.impulse);
+        v2scale(pcd.impulse, delta, new_speed / dist);
       } else {
         // We're way far behind using the provided speed, attempt to get all the way there by the next few
         // theoretical updates, this basically snaps if this is particularly small
-        VMath.v2ScalarMul(delta, 1 / (this.send_time + this.window * this.snap_factor), pcd.impulse);
+        v2scale(pcd.impulse, delta, 1 / (this.send_time + this.window * this.snap_factor));
       }
     }
   }
@@ -241,7 +242,7 @@ NetPositionManager.prototype.window = 200; // maximum expected variation in time
 NetPositionManager.prototype.snap_factor = 1.0; // how many windows to snap in when we think we need to snap
 NetPositionManager.prototype.smooth_windows = 6.5; // how many windows behind we can be and only accelerate a little
 NetPositionManager.prototype.smooth_factor = 1.2; // how much faster to go in the smoothing window
-NetPositionManager.prototype.default_pos = VMath.v2BuildZero();
+NetPositionManager.prototype.default_pos = vec2();
 
 
 export function create(...args) {
@@ -251,7 +252,7 @@ export function create(...args) {
 
 class ScalarInterpolator {
   constructor(tick_time) {
-    this.tick_time = tick_time;
+    this.tick_time = tick_time * 1.25;
     this.reset();
   }
 
