@@ -1,5 +1,5 @@
 const assert = require('assert');
-const events = require('events');
+const events = require('../common/tiny-events.js');
 const util = require('util');
 const wscommon = require('../common/wscommon.js');
 const WebSocket = require('ws');
