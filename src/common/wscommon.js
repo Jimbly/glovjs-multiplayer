@@ -12,11 +12,10 @@ function sendMessageInternal(client, msg, err, data, resp_func) {
     net_data.pak_id = ++client.last_pak_id;
     client.resp_cbs[net_data.pak_id] = resp_func;
   }
-  if (!client.connected) { // client.socket.readyState !== 1) { // WebSocket.OPEN
+  if (!client.connected || client.socket.readyState !== 1) { // WebSocket.OPEN
     (client.log ? client : console).log('Attempting to send on a disconnected link, ignoring', net_data);
   } else {
-    client.socket.emit('message', net_data);
-    //WebSockets: client.socket.send(JSON.stringify(net_data));
+    client.socket.send(JSON.stringify(net_data));
   }
 }
 
@@ -26,18 +25,13 @@ export function sendMessage(msg, data, resp_func) {
 
 // eslint-disable-next-line consistent-return
 export function handleMessage(client, net_data) {
-  /* WebSockets
   try {
     net_data = JSON.parse(net_data);
   } catch (e) {
-    (client.log ? client : console)('Error parsing data from client ' + client.id);
+    (client.log ? client : console).log(`Error parsing data from client ${client.id}`);
     return client.onError(e);
   }
-  */
-  let err = net_data.err;
-  let data = net_data.data;
-  let msg = net_data.msg;
-  let pak_id = net_data.pak_id;
+  let { err, data, msg, pak_id } = net_data;
 
   let expecting_response = Boolean(pak_id);
   let timeout_id;

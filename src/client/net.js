@@ -8,7 +8,6 @@ let subs;
 
 export function init() {
   client = new WSClient();
-  client.connect();
   subs = subscription_manager.create(client);
   window.subs = subs; // for debugging
   exports.subs = subs;

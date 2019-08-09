@@ -1,4 +1,5 @@
 const glov_engine = require('./glov/engine.js');
+const net = require('./net.js');
 const util = require('../common/util.js');
 const { max, min, sqrt } = Math;
 const {
@@ -32,8 +33,6 @@ class NetPositionManager {
     }
 
     this.channel = options.channel; // Never inheriting this over reinit()
-    this.client_id = options.client_id;
-
     this.last_send = {
       pos: vec2(-1, -1),
       sending: false,
@@ -76,22 +75,36 @@ class NetPositionManager {
   }
 
   checkNet(on_pos_set_cb) {
-    if (!this.channel.data.public) {
+    if (!net.client.id || !net.client.connected || !this.channel.data.public) {
       // Not yet in room, do nothing
       return true;
+    }
+    if (net.client.id !== this.client_id) {
+      // we reconnected, or, initial connection
+      if (this.client_id) {
+        // reconnect
+        this.last_send.sending = false;
+        this.last_send.time = 0;
+      }
+      this.client_id = net.client.id;
     }
 
     const me = this.channel.getChannelData(`public.clients.${this.client_id}`, {});
     if (!me.pos || !me.pos.cur || typeof me.pos.cur[0] !== 'number') {
-      v2copy(this.last_send.pos, this.default_pos);
+      if (this.ever_received_character) {
+        // we must be reconnecting, use last replicated position
+      } else {
+        // fresh connect, use default position
+        v2copy(this.last_send.pos, this.default_pos);
+        on_pos_set_cb(this.last_send.pos);
+      }
       this.channel.setChannelData(`public.clients.${this.client_id}.pos`, {
         cur: [this.last_send.pos[0], this.last_send.pos[1]], // Do not send as F32Array
       });
-      on_pos_set_cb(this.default_pos);
       this.ever_received_character = true;
     } else if (!this.ever_received_character) {
       v2copy(this.last_send.pos, me.pos.cur);
-      on_pos_set_cb(me.pos.cur);
+      on_pos_set_cb(this.last_send.pos);
       this.ever_received_character = true;
     }
     return false;
@@ -111,6 +124,9 @@ class NetPositionManager {
         if (this.last_send.send_time) {
           const time = now - this.last_send.send_time;
           this.last_send.speed = sqrt(v2distSq(this.last_send.pos, character_pos)) / time;
+          if (this.last_send.speed < 0.001) {
+            this.last_send.speed = 0;
+          }
         }
         this.last_send.send_time = now;
         this.last_send.pos[0] = character_pos[0];

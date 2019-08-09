@@ -24,7 +24,7 @@
     "mkdirp": "^0.5.1",
     "random-seed": "^0.3.0",
     "request": "^2.88.0",
-    "socket.io": "^2.1.1"
+    "ws": "^7.1.1"
   },
   "devDependencies": {
     "babel-core": "^6.26.3",
@@ -48,5 +48,8 @@
     "vinyl-buffer": "^1.0.0",
     "vinyl-source-stream": "^1.1.0",
     "watchify": "3.11.0"
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.1"
   }
 }

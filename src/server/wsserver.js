@@ -2,13 +2,21 @@ const assert = require('assert');
 const events = require('events');
 const util = require('util');
 const wscommon = require('../common/wscommon.js');
-const socket_io = require('socket.io');
+const WebSocket = require('ws');
+
 
 const regex_ipv4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/u;
-function ipFromSocketIO(socket) {
-  // console.log('Client connection headers ' + JSON.stringify(socket.handshake.headers));
-  let ip = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-  let port = socket.handshake.headers['x-forwarded-port'] || socket.handshake.port;
+function ipFromRequest(req) {
+  // See getRemoteAddressFromRequest() for more implementation details, possibilities, proxying options
+  // console.log('Client connection headers ' + JSON.stringify(req.headers));
+
+  // Security note: must check x-forwarded-for *only* if we know this request came from a
+  //   reverse proxy, should warn if missing x-forwarded-for.
+  let ip = req.headers['x-forwarded-for'] || req.client.remoteAddress ||
+    req.client.socket && req.client.socket.remoteAddress;
+  let port = req.headers['x-forwarded-port'] || req.client.remotePort ||
+    req.client.socket && req.client.socket.remotePort;
+  assert(ip);
   let m = ip.match(regex_ipv4);
   if (m) {
     ip = m[1];
@@ -21,7 +29,7 @@ function WSClient(ws_server, socket) {
   this.ws_server = ws_server;
   this.socket = socket;
   this.id = ++ws_server.last_client_id;
-  this.addr = ipFromSocketIO(socket); // ipFromRequest(socket.upgradeReq);
+  this.addr = ipFromRequest(socket.handshake);
   this.last_pak_id = 0;
   this.resp_cbs = {};
   this.handlers = ws_server.handlers; // reference, not copy!
@@ -69,16 +77,17 @@ WSServer.prototype.onMsg = function (msg, cb) {
 
 WSServer.prototype.init = function (server) {
   let ws_server = this;
-  ws_server.io = socket_io.listen(server);
+  ws_server.wss = new WebSocket.Server({ server });
 
-  ws_server.io.sockets.on('connection', (socket) => {
+  ws_server.wss.on('connection', (socket, req) => {
+    socket.handshake = req;
     let client = new WSClient(ws_server, socket);
     console.log(`WS Client ${client.id} connected from ${client.addr}` +
       ` (${Object.keys(ws_server.clients).length} clients connected)`);
 
     client.send('internal_client_id', client.id);
 
-    socket.on('disconnect', function () {
+    socket.on('close', function () {
       client.connected = false;
       client.disconnected = true;
       delete ws_server.clients[client.id];
@@ -91,7 +100,7 @@ WSServer.prototype.init = function (server) {
       wscommon.handleMessage(client, data);
     });
     socket.on('error', function (e) {
-      // Not sure this exists on socket.io
+      // Not sure this exists on `ws`
       client.onError(e);
     });
     ws_server.emit('client', client);

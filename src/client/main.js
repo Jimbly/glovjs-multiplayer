@@ -1,7 +1,8 @@
 /*eslint global-require:off*/
 
 const cmd_parse = require('../common/cmd_parse.js').create();
-const glov_engine = require('./glov/engine.js');
+const camera2d = require('./glov/camera2d.js');
+const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const fs = require('fs');
 const input = require('./glov/input.js');
@@ -40,7 +41,7 @@ export let sprites = {};
 export function main() {
   net.init();
 
-  if (!glov_engine.startup({
+  if (!engine.startup({
     game_width,
     game_height,
     pixely: false,
@@ -50,8 +51,8 @@ export function main() {
 
   const test_shader = shaders.create(gl.FRAGMENT_SHADER, fs.readFileSync(`${__dirname}/shaders/test.fp`, 'utf8'));
 
-  const sound_manager = glov_engine.sound_manager;
-  // const font = glov_engine.font;
+  const sound_manager = engine.sound_manager;
+  // const font = engine.font;
 
 
   const createSprite = glov_sprites.create;
@@ -110,30 +111,15 @@ export function main() {
 
 
   let test_room;
+  let test;
 
-  function test(dt) {
-    // Allow focusing the canvas, and before chat.
-    ui.focusCheck('canvas');
-
-    if (!test_room) {
-      test_room = net.subs.getChannel('test.test', true);
-      pos_manager.reinit({
-        channel: test_room,
-        client_id: net.client.id,
-      });
-      app.chat_ui.setChannel(test_room);
-    }
-
-    app.chat_ui.run(dt);
-    app.account_ui.showLogin();
-
-    if (!test.color_sprite) {
-      test.color_sprite = v4copy(vec4(), color_white);
-      test.character = {
-        x: (Math.random() * (game_width - sprite_size) + (sprite_size * 0.5)),
-        y: (Math.random() * (game_height - sprite_size) + (sprite_size * 0.5)),
-      };
-      test.last_send = {};
+  function playerMotion(dt) {
+    // Network send
+    if (pos_manager.checkNet((pos) => {
+      test.character.x = pos[0];
+      test.character.y = pos[1];
+    })) {
+      return;
     }
 
     test.character.dx = 0;
@@ -180,12 +166,42 @@ export function main() {
       test.color_sprite[3] = 1;
     }
 
+    // Network send
+    pos_manager.updateMyPos([test.character.x, test.character.y], 'idle');
+  }
+
+  test = function (dt) {
+    // Allow focusing the canvas, and before chat.
+    ui.focusCheck('canvas');
+
+    app.chat_ui.run(dt);
+    app.account_ui.showLogin();
+
+    if (net.client.disconnected) {
+      ui.font.drawSizedAligned(
+        glov_font.style(null, {
+          outline_width: 2,
+          outline_color: 0x000000ff,
+          color: 0xDD2020ff
+        }),
+        camera2d.x0(), camera2d.y0(), Z.DEBUG,
+        ui.font_height, glov_font.ALIGN.HVCENTER, camera2d.w(), camera2d.h() * 0.20,
+        `Connection lost, attempting to reconnect (${(net.client.timeSinceDisconnect()/1000).toFixed(0)})...`);
+    }
+
+    if (!test.color_sprite) {
+      test.color_sprite = v4copy(vec4(), color_white);
+      test.character = { x: 0, y: 0 };
+    }
+
+    playerMotion(dt);
+
     sprites.game_bg.draw({
       x: 0, y: 0, z: Z.BACKGROUND,
       color: [0.5, 0.6, 0.7, 1],
       shader: test_shader,
       shader_params: {
-        params: [1.0, 1.0, 1.0, glov_engine.getFrameTimestamp() * 0.0005 % 1000],
+        params: [1.0, 1.0, 1.0, engine.getFrameTimestamp() * 0.0005 % 1000],
       },
     });
 
@@ -198,11 +214,6 @@ export function main() {
       size: [sprite_size, sprite_size],
       frame: sprites.animation.getFrame(dt),
     });
-
-    // Network send
-    if (net.client.id && test_room.data.public) {
-      pos_manager.updateMyPos([test.character.x, test.character.y], 'idle');
-    }
 
     // Draw other users
     let room_clients = test_room.getChannelData('public.clients', {});
@@ -222,13 +233,24 @@ export function main() {
     }
 
     app.chat_ui.runLate(dt);
-  }
+  };
 
   function testInit(dt) {
-    glov_engine.setState(test);
+    engine.setState(test);
+
+    test_room = net.subs.getChannel('test.test', true);
+    pos_manager.reinit({
+      channel: test_room,
+      default_pos: vec2(
+        (Math.random() * (game_width - sprite_size) + (sprite_size * 0.5)),
+        (Math.random() * (game_height - sprite_size) + (sprite_size * 0.5))
+      ),
+    });
+    app.chat_ui.setChannel(test_room);
+
     test(dt);
   }
 
   initGraphics();
-  glov_engine.setState(testInit);
+  engine.setState(testInit);
 }
