@@ -1,6 +1,9 @@
 /*global require,console,setTimeout,clearTimeout*/
 const assert = require('assert');
 
+export const CONNECTION_TIMEOUT = 60000;
+export const PING_TIME = CONNECTION_TIMEOUT / 2;
+
 function sendMessageInternal(client, msg, err, data, resp_func) {
   assert(typeof msg === 'string' || typeof msg === 'number');
   let net_data = {
@@ -16,6 +19,7 @@ function sendMessageInternal(client, msg, err, data, resp_func) {
     (client.log ? client : console).log('Attempting to send on a disconnected link, ignoring', net_data);
   } else {
     client.socket.send(JSON.stringify(net_data));
+    client.last_send_time = Date.now();
   }
 }
 
@@ -25,12 +29,14 @@ export function sendMessage(msg, data, resp_func) {
 
 // eslint-disable-next-line consistent-return
 export function handleMessage(client, net_data) {
+  let now = Date.now();
   try {
     net_data = JSON.parse(net_data);
   } catch (e) {
     (client.log ? client : console).log(`Error parsing data from client ${client.id}`);
     return client.onError(e);
   }
+  client.last_receive_time = now;
   let { err, data, msg, pak_id } = net_data;
 
   let expecting_response = Boolean(pak_id);
@@ -39,7 +45,7 @@ export function handleMessage(client, net_data) {
     timeout_id = 'pending';
   }
   let sent_response = false;
-  let start_time = Date.now();
+  let start_time = now;
   function respFunc(err, resp_data, resp_func) {
     assert(!sent_response, 'Response function called twice');
     sent_response = true;

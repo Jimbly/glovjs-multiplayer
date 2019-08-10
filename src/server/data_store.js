@@ -17,7 +17,7 @@ class DataStoreOneFile {
     this.root_store.set(obj_name, obj);
   }
   get(obj_name, key, default_value) {
-    let obj = this.root_store.get(obj_name, {});
+    let obj = this.root_store.get(obj_name, key ? {} : default_value);
     if (!key) {
       return obj;
     }
@@ -60,7 +60,7 @@ class DataStore {
   }
   get(obj_name, key, default_value) {
     let store = this.getStore(obj_name);
-    let obj = store.get('data', {});
+    let obj = store.get('data', key ? {} : default_value);
     if (!key) {
       return obj;
     }

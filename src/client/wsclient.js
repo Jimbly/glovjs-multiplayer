@@ -15,6 +15,8 @@ export function WSClient() {
   this.retry_scheduled = false;
   this.retry_count = 0;
   this.disconnect_time = 0;
+  this.last_receive_time = Date.now();
+  this.last_send_time = Date.now();
 
   let path = document.location.toString().match(/^[^#?]+/u)[0]; // remove search and anchor
   if (path.slice(-1) !== '/') {
@@ -43,16 +45,17 @@ WSClient.prototype.timeSinceDisconnect = function () {
   return Date.now() - this.disconnect_time;
 };
 
-WSClient.prototype.onInternalClientID = function (client_id, resp_func) {
+WSClient.prototype.onInternalClientID = function (data, resp_func) {
   let client = this;
   client.connected = true;
   client.disconnected = false;
-  client.id = client_id;
+  client.id = data.id;
+  client.secret = data.secret;
   // Fire user-level connect handler as well
   wscommon.handleMessage(client, JSON.stringify({
     msg: 'connect',
     data: {
-      client_id: client_id,
+      client_id: client.id,
     },
   }));
   resp_func();
@@ -93,8 +96,9 @@ WSClient.prototype.retryConnection = function () {
 WSClient.prototype.connect = function (for_reconnect) {
   let client = this;
 
-  // TODO: Add a secret from first connection to auth the reconnect
-  let path = for_reconnect && client.id ? `${client.path}?reconnect=${client.id}` : client.path;
+  let path = for_reconnect && client.id && client.secret ?
+    `${client.path}?reconnect=${client.id}&secret=${client.secret}` :
+    client.path;
   let socket = new WebSocket(path);
   client.socket = socket;
 
@@ -158,6 +162,14 @@ WSClient.prototype.connect = function (for_reconnect) {
     console.log('WebSocket close, retrying connection...');
     retry(true);
   }));
+
+  let doPing = guard(function () {
+    if (Date.now() - client.last_send_time > wscommon.PING_TIME) {
+      client.send('ping');
+    }
+    setTimeout(doPing, wscommon.PING_TIME);
+  });
+  setTimeout(doPing, wscommon.PING_TIME);
 
   // For debugging reconnect handling
   // setTimeout(function () {

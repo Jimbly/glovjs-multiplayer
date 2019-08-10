@@ -13,9 +13,12 @@ class DefaultUserWorker {
     return resp_func(null, 'Successfully renamed');
   }
   handleSetChannelData(client/*, key, value*/) {
+    if (!client) {
+      // during login, the server
+      return true;
+    }
     if (client.is_channel_worker) {
       // from a channel, accept it
-      // or, during login, the server
       return true;
     }
     // Only allow changes from own client!

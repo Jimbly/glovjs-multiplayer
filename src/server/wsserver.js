@@ -1,9 +1,11 @@
 const assert = require('assert');
 const events = require('../common/tiny-events.js');
-const util = require('util');
+const node_util = require('util');
+const querystring = require('querystring');
+const util = require('../common/util.js');
+const url = require('url');
 const wscommon = require('../common/wscommon.js');
 const WebSocket = require('ws');
-
 
 const regex_ipv4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/u;
 function ipFromRequest(req) {
@@ -29,6 +31,7 @@ function WSClient(ws_server, socket) {
   this.ws_server = ws_server;
   this.socket = socket;
   this.id = ++ws_server.last_client_id;
+  this.secret = Math.ceil(Math.random() * 1e10).toString();
   this.addr = ipFromRequest(socket.handshake);
   this.last_pak_id = 0;
   this.resp_cbs = {};
@@ -36,6 +39,7 @@ function WSClient(ws_server, socket) {
   this.connected = true;
   this.disconnected = false;
   this.responses_waiting = 0;
+  this.last_receive_time = Date.now();
   ws_server.clients[this.id] = this;
 }
 util.inherits(WSClient, events.EventEmitter);
@@ -45,7 +49,7 @@ WSClient.prototype.log = function (...args) {
   let msg = [];
   for (let ii = 0; ii < arguments.length; ++ii) {
     if (typeof args[ii] === 'object') {
-      msg.push(util.inspect(args[ii]));
+      msg.push(node_util.inspect(args[ii]));
     } else {
       msg.push(args[ii]);
     }
@@ -57,6 +61,21 @@ WSClient.prototype.onError = function (e) {
   this.ws_server.emit('error', e);
 };
 
+WSClient.prototype.onClose = function () {
+  let client = this;
+  if (!client.connected) {
+    return;
+  }
+  let ws_server = client.ws_server;
+  client.connected = false;
+  client.disconnected = true;
+  delete ws_server.clients[client.id];
+  console.log(`WS Client ${client.id} disconnected` +
+    ` (${Object.keys(ws_server.clients).length} clients connected)`);
+  client.emit('disconnect');
+  ws_server.emit('disconnect', client);
+};
+
 WSClient.prototype.send = wscommon.sendMessage;
 
 function WSServer() {
@@ -66,6 +85,7 @@ function WSServer() {
   this.clients = Object.create(null);
   this.handlers = {};
   this.restarting = false;
+  this.onMsg('ping', util.nop);
 }
 util.inherits(WSServer, events.EventEmitter);
 
@@ -82,19 +102,14 @@ WSServer.prototype.init = function (server) {
   ws_server.wss.on('connection', (socket, req) => {
     socket.handshake = req;
     let client = new WSClient(ws_server, socket);
-    console.log(`WS Client ${client.id} connected from ${client.addr}` +
+    console.log(`WS Client ${client.id} connected to ${req.url} from ${client.addr}` +
       ` (${Object.keys(ws_server.clients).length} clients connected)`);
 
-    client.send('internal_client_id', client.id);
+    client.send('internal_client_id', { id: client.id, secret: client.secret });
 
     socket.on('close', function () {
-      client.connected = false;
-      client.disconnected = true;
-      delete ws_server.clients[client.id];
-      console.log(`WS Client ${client.id} disconnected` +
-        ` (${Object.keys(ws_server.clients).length} clients connected)`);
-      client.emit('disconnect');
-      ws_server.emit('disconnect', client);
+      // disable this for testing
+      client.onClose();
     });
     socket.on('message', function (data) {
       wscommon.handleMessage(client, data);
@@ -104,7 +119,45 @@ WSServer.prototype.init = function (server) {
       client.onError(e);
     });
     ws_server.emit('client', client);
+
+    let query = querystring.parse(url.parse(req.url).query);
+    let reconnect_id = Number(query.reconnect);
+    if (reconnect_id) {
+      // we're reconnecting an existing client, immediately disconnect the old one
+      let old_client = ws_server.clients[reconnect_id];
+      if (old_client) {
+        if (old_client.secret === query.secret) {
+          console.log(`WS Client ${old_client.id} being replaced by reconnect, disconnecting...`);
+          this.disconnectClient(old_client);
+        } else {
+          console.log(`WS Client ${client.id} requested disconnect of Client ${reconnect_id}` +
+            ' with incorrect secret, ignoring');
+        }
+      }
+    }
   });
+
+  setInterval(this.checkTimeouts.bind(this), wscommon.CONNECTION_TIMEOUT / 2);
+};
+
+WSServer.prototype.disconnectClient = function (client) {
+  try {
+    client.socket.close();
+  } catch (err) {
+    // ignore
+  }
+  client.onClose();
+};
+
+WSServer.prototype.checkTimeouts = function () {
+  let expiry = Date.now() - wscommon.CONNECTION_TIMEOUT;
+  for (let client_id in this.clients) {
+    let client = this.clients[client_id];
+    if (client.last_receive_time < expiry) {
+      console.log(`WS Client ${client.id} timed out, disconnecting...`);
+      this.disconnectClient(client);
+    }
+  }
 };
 
 WSServer.prototype.broadcast = function (msg, data) {
