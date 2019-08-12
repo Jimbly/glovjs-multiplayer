@@ -1,10 +1,10 @@
 const assert = require('assert');
-const events = require('../common/tiny-events.js');
+const events = require('../../common/tiny-events.js');
 const node_util = require('util');
 const querystring = require('querystring');
-const util = require('../common/util.js');
+const util = require('../../common/util.js');
 const url = require('url');
-const wscommon = require('../common/wscommon.js');
+const wscommon = require('../../common/wscommon.js');
 const WebSocket = require('ws');
 
 const regex_ipv4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/u;
@@ -173,12 +173,14 @@ WSServer.prototype.broadcast = function (msg, data) {
   return num_sent;
 };
 
-function isClient(obj) {
+export function isClient(obj) {
   return obj instanceof WSClient;
 }
 
 WSServer.prototype.isClient = isClient;
 
-module.exports = WSServer;
-module.exports.isClient = isClient;
-module.exports.WSClient = WSClient;
+export function create(...args) {
+  let ret = new WSServer();
+  ret.init(...args);
+  return ret;
+}

@@ -1,5 +1,5 @@
 const assert = require('assert');
-const cmd_parse = require('../common/cmd_parse.js');
+const cmd_parse = require('../../common/cmd_parse.js');
 const default_workers = require('./default_workers.js');
 const dot_prop = require('dot-prop');
 
