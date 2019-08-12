@@ -45,6 +45,7 @@ export function main() {
     game_width,
     game_height,
     pixely: false,
+    sound_manager: require('./glov/sound_manager.js').create(),
   })) {
     return;
   }
