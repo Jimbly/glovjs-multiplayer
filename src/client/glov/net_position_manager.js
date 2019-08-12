@@ -1,10 +1,10 @@
-const glov_engine = require('./glov/engine.js');
+const glov_engine = require('./engine.js');
 const net = require('./net.js');
-const util = require('../common/util.js');
+const util = require('../../common/util.js');
 const { max, min, sqrt } = Math;
 const {
   vec2, v2copy, v2distSq, v2lengthSq, v2scale, v2sub,
-} = require('./glov/vmath.js');
+} = require('./vmath.js');
 
 const valid_options = [
   // Numeric parameters

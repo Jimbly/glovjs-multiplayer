@@ -1,10 +1,9 @@
-/* global md5 */
-
 const assert = require('assert');
 const dot_prop = require('dot-prop');
-const EventEmitter = require('../common/tiny-events.js');
-const local_storage = require('./glov/local_storage.js');
-const util = require('../common/util.js');
+const EventEmitter = require('../../common/tiny-events.js');
+const local_storage = require('./local_storage.js');
+const md5 = require('./md5.js');
+const util = require('../../common/util.js');
 
 // relevant events:
 //   .on('channel_data', cb(data [, mod_key, mod_value]));

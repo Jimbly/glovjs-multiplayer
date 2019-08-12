@@ -1,7 +1,7 @@
 {
   "name": "glovjs-multiplayer",
   "version": "0.0.1",
-  "description": "Template for a state of the art online multiplayer Javascript project using Turbulenz and socket.io",
+  "description": "Template for a state of the art online multiplayer Javascript project using GLOV.js",
   "main": "build/server/index.js",
   "scripts": {
     "start": "gulp browser-sync",

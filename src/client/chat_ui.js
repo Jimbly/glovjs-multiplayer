@@ -2,7 +2,7 @@ const camera2d = require('./glov/camera2d.js');
 const glov_font = require('./glov/font.js');
 const input = require('./glov/input.js');
 const ui = require('./glov/ui.js');
-const net = require('./net.js');
+const net = require('./glov/net.js');
 
 class ChatUI {
   constructor(cmd_parse) {

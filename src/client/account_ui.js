@@ -1,6 +1,6 @@
 const camera2d = require('./glov/camera2d.js');
 const local_storage = require('./glov/local_storage.js');
-const net = require('./net.js');
+const net = require('./glov/net.js');
 const glov_ui = require('./glov/ui.js');
 
 class AccountUI {

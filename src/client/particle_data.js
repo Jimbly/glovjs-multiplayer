@@ -3,7 +3,7 @@ export let defs = {};
 defs.explosion = {
   particles: {
     part0: {
-      bucket: 'alpha',
+      blend: 'alpha',
       texture: 'particles/circle64',
       color: [1,1,1,1], // multiplied by animation track, default 1,1,1,1, can be omitted
       color_track: [

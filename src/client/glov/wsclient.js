@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const { min } = Math;
-const wscommon = require('../common/wscommon.js');
+const wscommon = require('../../common/wscommon.js');
 
 export function WSClient() {
   this.last_pak_id = 0;
