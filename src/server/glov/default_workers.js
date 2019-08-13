@@ -1,9 +1,8 @@
 class DefaultUserWorker {
   constructor(channel_worker, channel_id) {
     this.channel_worker = channel_worker;
-    this.channel_id = channel_id;
-    this.user_id = channel_worker.channel_subid;
-    channel_worker.cmdRegister('rename', this.cmdRename.bind(this));
+    this.channel_id = channel_id; // user.1234
+    this.user_id = channel_worker.channel_subid; // 1234
   }
   cmdRename(new_name, resp_func) {
     if (!new_name) {
@@ -29,6 +28,10 @@ class DefaultUserWorker {
   }
 }
 
-export function createDefaultUserWorker(channel_worker, channel_id) {
-  return new DefaultUserWorker(channel_worker, channel_id);
+export function init(channel_server) {
+  channel_server.addChannelWorker('user', DefaultUserWorker, {
+    cmds: {
+      rename: DefaultUserWorker.prototype.cmdRename,
+    }
+  });
 }

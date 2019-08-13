@@ -146,7 +146,7 @@ function onLogin(channel_server, client, data, resp_func) {
 function onCmdParse(channel_server, client, data, resp_func) {
   let channel;
   function handleCmdResult(err, resp) {
-    if (err && channel.cmd_parse.was_not_found) {
+    if (err && channel.app_worker.cmd_parse.was_not_found) {
       // handled must be returning false
       // silently continue
       return;
@@ -156,12 +156,12 @@ function onCmdParse(channel_server, client, data, resp_func) {
   }
   for (let channel_id in client.channels) {
     channel = client.channels[channel_id];
-    let handled = channel.cmd_parse.handle(data, handleCmdResult);
+    let handled = channel.app_worker.cmd_parse.handle(channel.app_worker, data, handleCmdResult);
     if (handled) {
       return;
     }
   }
-  cmd_parse_system.handle(data, resp_func);
+  cmd_parse_system.handle(null, data, resp_func);
 }
 
 function channelServerSend(source, dest, msg, data, resp_func) {
@@ -203,11 +203,9 @@ class ChannelWorker {
     this.data.channel_id = channel_id;
     this.channels = {}; // channels we're subscribed to
     this.subscribe_counts = {}; // refcount of subscriptions to other channels
-    this.handlers = {}; // for handling messages from other channels
     this.internal_handlers = {}; // internal handlers for handling messages from other channels (no resp_func)
     this.is_channel_worker = true;
     this.adding_client = null; // The client we're in the middle of adding, don't send them state updates yet
-    this.cmd_parse = cmd_parse.create();
     // Modes that can be enabled
     this.maintain_client_list = false;
     this.emit_join_leave_events = false;
@@ -219,13 +217,6 @@ class ChannelWorker {
   }
   doEmitJoinLeaveEvents() {
     this.emit_join_leave_events = true;
-  }
-  cmdRegister(cmd, func) {
-    this.cmd_parse.register(cmd, func);
-  }
-  onChannelMsg(msg, handler) {
-    assert(!this.handlers[msg]);
-    this.handlers[msg] = handler;
   }
   onChannelMsgInternal(msg, handler) {
     assert(!this.internal_handlers[msg]);
@@ -397,8 +388,8 @@ class ChannelWorker {
     if (this.internal_handlers[msg]) {
       this.internal_handlers[msg](source, data);
     }
-    if (this.handlers[msg]) {
-      this.handlers[msg](source, data, resp_func);
+    if (this.app_worker.handlers[msg]) {
+      this.app_worker.handlers[msg].call(this.app_worker, source, data, resp_func);
     } else {
       resp_func();
     }
@@ -413,7 +404,7 @@ class ChannelServer {
     this.last_client_id = 0;
     this.channel_types = {};
     this.channels = {};
-    this.addChannelWorker('user', default_workers.createDefaultUserWorker);
+    default_workers.init(this);
   }
 
   getChannel(channel_id) {
@@ -424,7 +415,8 @@ class ChannelServer {
     let channel = new ChannelWorker(this, channel_id);
     this.channels[channel_id] = channel;
     if (this.channel_types[channel_type]) {
-      channel.setAppWorker(this.channel_types[channel_type](channel, channel_id));
+      let Ctor = this.channel_types[channel_type];
+      channel.setAppWorker(new Ctor(channel, channel_id));
     }
     return channel;
   }
@@ -476,8 +468,26 @@ class ChannelServer {
     }
   }
 
-  addChannelWorker(channel_type, factory) {
-    this.channel_types[channel_type] = factory;
+  addChannelWorker(channel_type, ctor, options) {
+    this.channel_types[channel_type] = ctor;
+    // Register handlers
+    if (!ctor.prototype.cmd_parse) {
+      let cmdparser = ctor.prototype.cmd_parse = cmd_parse.create();
+      if (options && options.cmds) {
+        for (let cmd in options.cmds) {
+          cmdparser.register(cmd, options.cmds[cmd]);
+        }
+      }
+    }
+    if (!ctor.prototype.handlers) {
+      let handlers = ctor.prototype.handlers = {};
+      if (options && options.handlers) {
+        for (let msg in options.handlers) {
+          assert(!handlers[msg]);
+          handlers[msg] = options.handlers[msg];
+        }
+      }
+    }
   }
 
   getChannelsByType(channel_type) {

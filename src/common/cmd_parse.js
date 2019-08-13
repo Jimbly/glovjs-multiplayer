@@ -7,7 +7,7 @@ class CmdParse {
     this.cmds = {};
     this.was_not_found = false;
   }
-  handle(str, resp_func) {
+  handle(self, str, resp_func) {
     this.was_not_found = false;
     let m = str.match(/^([^\s]+)(?:\s+(.*))?$/u);
     if (!m) {
@@ -20,7 +20,7 @@ class CmdParse {
       resp_func(`Unknown command: "${m[1]}"`);
       return false;
     }
-    this.cmds[cmd](m[2], resp_func);
+    this.cmds[cmd].call(self, m[2], resp_func);
     return true;
   }
 

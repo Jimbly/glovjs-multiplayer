@@ -77,7 +77,7 @@ class ChatUI {
               }
             };
             let command = text.slice(1);
-            this.cmd_parse.handle(command, (err, resp) => {
+            this.cmd_parse.handle(null, command, (err, resp) => {
               if (err && this.cmd_parse.was_not_found) {
                 // forward to server
                 net.client.send('cmdparse', command, handleCmdParse);

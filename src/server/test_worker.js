@@ -7,10 +7,6 @@ class TestWorker {
   }
 }
 
-function createTestWorker(channel_worker, channel_id) {
-  return new TestWorker(channel_worker, channel_id);
-}
-
 export function init(channel_server) {
-  channel_server.addChannelWorker('test', createTestWorker);
+  channel_server.addChannelWorker('test', TestWorker);
 }

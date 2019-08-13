@@ -38,14 +38,18 @@ EventEmitter.prototype.once = function (type, fn) {
 EventEmitter.prototype.removeListener = function (type, fn) {
   let arr = this._listeners[type];
   assert(arr);
-  let idx = arr.lastIndexOf(fn);
-  assert(idx !== -1);
-  arr.splice(idx, 1);
+  for (let ii = 0; ii < arr.length; ++ii) {
+    if (arr[ii].fn === fn) {
+      arr.splice(ii, 1);
+      return this;
+    }
+  }
+  assert(false); // expected to find the listener!
   return this;
 };
 
-function filterOnce(elem) {
-  return elem.once;
+function filterNotOnce(elem) {
+  return !elem.once;
 }
 
 EventEmitter.prototype.emit = function (type, ...args) {
@@ -65,7 +69,7 @@ EventEmitter.prototype.emit = function (type, ...args) {
     }
   }
   if (any_once) {
-    this._listeners[type] = arr.filter(filterOnce);
+    this._listeners[type] = arr.filter(filterNotOnce);
   }
 
   return any;
