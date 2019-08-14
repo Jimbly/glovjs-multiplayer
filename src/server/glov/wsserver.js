@@ -1,6 +1,7 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
 
+const ack = require('../../common/ack.js');
 const assert = require('assert');
 const events = require('../../common/tiny-events.js');
 const node_util = require('util');
@@ -36,13 +37,11 @@ function WSClient(ws_server, socket) {
   this.id = ++ws_server.last_client_id;
   this.secret = Math.ceil(Math.random() * 1e10).toString();
   this.addr = ipFromRequest(socket.handshake);
-  this.last_pak_id = 0;
-  this.resp_cbs = {};
   this.handlers = ws_server.handlers; // reference, not copy!
   this.connected = true;
   this.disconnected = false;
-  this.responses_waiting = 0;
   this.last_receive_time = Date.now();
+  ack.initReceiver(this);
   ws_server.clients[this.id] = this;
 }
 util.inherits(WSClient, events.EventEmitter);

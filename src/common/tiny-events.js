@@ -57,7 +57,7 @@ function filterNotOnce(elem) {
 EventEmitter.prototype.emit = function (type, ...args) {
   let arr = this._listeners[type];
   if (!arr) {
-    return this;
+    return false;
   }
 
   let any = false;

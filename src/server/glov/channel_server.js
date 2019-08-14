@@ -1,10 +1,13 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
 
+const ack = require('../../common/ack.js');
 const assert = require('assert');
 const cmd_parse = require('../../common/cmd_parse.js');
+const client_worker = require('./client_worker.js');
 const default_workers = require('./default_workers.js');
 const dot_prop = require('dot-prop');
+const exchange = require('./exchange.js');
 
 const { max } = Math;
 
@@ -25,40 +28,92 @@ function logdata(data) {
   return `${r.slice(0, 77)}...`;
 }
 
-function onClientDisconnect(channel_server, client) {
-  for (let channel_id in client.channels) {
-    client.channels[channel_id].removeClient(client);
+function defaultRespFunc(err) {
+  if (err) {
+    console.log('Received unhandled error response:', err);
   }
 }
 
-function onSubscribe(channel_server, client, channel_id) {
-  console.log(`client_id:${client.id}->${channel_id}: subscribe `);
-  let channel = channel_server.getChannel(channel_id);
-  if (!channel) {
-    console.log(' - failed channel creation');
-    return;
+// source is a ChannelWorker
+// dest is channel_id in the form of `type.id`
+function channelServerSend2(source, dest, msg, err, data, resp_func) {
+  /*
+    TODO: Deal with ordering of initial packets to new channels:
+    Keep list of known other channels (maybe LRU with expiry).
+    Upon the first message to an unknown channel, we need to queue up all other
+      messages to that channel until the first one gets through (including possible
+      auto-creation of the channel and retry).
+    If a message fails due to ERR_NOT_FOUND, we need to queue up future messages
+      to this channel *as well as* any other messages that fail and want to retry,
+      but these should be queued in the order they were originally sent, not the
+      order failures come back.
+    Or, we have a per-process (same UID we use for client IDs), per-destination-
+      channel index, and the receiving end orders packets and waits for missing ones.
+    Or, it's per-source, to be resilient against moving channels to different
+      processes (logic here from other project).
+  */
+  assert(source.channel_id);
+  if (!data || !data.q) {
+    console.log(`${source.channel_id}->${dest}: ${msg} ${logdata(data)}`);
   }
 
-  if (!channel.addClient(client)) {
-    console.log(' - failed app_worker check');
+  assert(typeof dest === 'string' && dest);
+  assert(typeof msg === 'string' || typeof msg === 'number');
+  let net_data = ack.wrapMessage(source, msg, err, data, resp_func);
+  if (source.ids) {
+    net_data.ids = source.ids;
   }
+  if (!resp_func) {
+    resp_func = defaultRespFunc;
+  }
+  let retries = 10;
+  function trySend(prev_error) {
+    if (!retries--) {
+      return resp_func(prev_error || 'RETRIES_EXHAUSTED');
+    }
+    return exchange.publish(source.channel_id, dest, net_data, function (err) {
+      if (!err) {
+        // Sent successfully, resp_func called when other side ack's.
+        return null;
+      }
+      if (err !== exchange.ERR_NOT_FOUND) {
+        // Some error other than not finding the destination, should we do a retry?
+        return resp_func(err);
+      }
+      // Destination not found, should we create it?
+      let [dest_type, dest_id] = dest.split('.');
+      let channel_server = source.channel_server;
+      let ctor = channel_server.channel_types[dest_type];
+      if (!ctor) {
+        return resp_func('ERR_UNKNOWN_CHANNEL_TYPE');
+      }
+      if (!ctor.autocreate) {
+        return resp_func(err); // ERR_NOT_FOUND
+      }
+      return channel_server.autoCreateChannel(dest_type, dest_id, function (err2) {
+        if (err2) {
+          console.log(`Error auto-creating channel ${dest}:`, err2);
+        } else {
+          console.log(`Auto-created channel ${dest}`);
+        }
+        trySend(err);
+      });
+    });
+  }
+  trySend();
 }
 
 function onUnSubscribe(channel_server, client, channel_id) {
-  console.log(`client_id:${client.id}->${channel_id}: unsubscribe `);
-  if (!client.channels[channel_id]) {
-    console.log(' - failed not subscribed');
-    return;
-  }
-  let channel = channel_server.getChannel(channel_id);
-  if (!channel) {
-    console.log(' - failed getting channel');
-    return;
-  }
-
-  channel.removeClient(client);
+  client.channel_worker.unsubscribe(channel_id);
 }
 
+function onClientDisconnect(channel_server, client) {
+  client.channel_worker.unsubscribeAll();
+}
+
+function onSubscribe(channel_server, client, channel_id) {
+  client.channel_worker.subscribe(channel_id);
+}
 
 function onSetChannelData(channel_server, client, data, resp_func) {
   if (!data.q) {
@@ -112,6 +167,7 @@ function onChannelMsg(channel_server, client, data, resp_func) {
   }
 }
 
+const regex_valid_username = /^[a-zA-Z0-9_]+$/u;
 function onLogin(channel_server, client, data, resp_func) {
   console.log(`client_id:${client.id}->server login ${logdata(data)}`);
   if (!data.name) {
@@ -121,29 +177,34 @@ function onLogin(channel_server, client, data, resp_func) {
     // hasOwnProperty, etc
     return resp_func('invalid username');
   }
-  if (!data.password) {
-    return resp_func('missing password');
+  if (!data.name.match(regex_valid_username)) {
+    // has a "." or other invalid character
+    return resp_func('invalid username');
   }
 
-  let user_channel = channel_server.getChannel(`user.${data.name}`);
+  assert(client.client_channel);
 
-  if (!user_channel.getChannelData('private.password')) {
-    user_channel.setChannelData('private.password', data.password);
-    user_channel.setChannelData('public.display_name', data.name);
-  }
-  if (user_channel.getChannelData('private.password') === data.password) {
-    client.ids.user_id = data.name;
-    client.ids.display_name = user_channel.getChannelData('public.display_name');
-    // Tell channels we have a new user id/display name
-    for (let channel_id in client.channels) {
-      client.channels[channel_id].clientChanged(client);
+  return channelServerSend2(client.client_channel, `user.${data.name}`, 'login', null, {
+    password: data.password,
+  }, function (err, resp_data) {
+    if (!err) {
+      client.client_channel.ids = client.client_channel.ids || {};
+      client.client_channel.ids.user_id = data.name;
+      client.ids.user_id = data.name;
+      // Note: not updated upon rename, just useful for debugging
+      client.client_channel.ids.display_name = resp_data.display_name;
+      client.ids.display_name = resp_data.display_name;
+
+      // Tell channels we have a new user id/display name
+      for (let channel_id in client.channels) {
+        client.channels[channel_id].clientChanged(client);
+      }
+
+      // Always subscribe client to own user
+      onSubscribe(channel_server, client, `user.${data.name}`);
     }
-    // Always subscribe client to own user
-    onSubscribe(channel_server, client, `user.${data.name}`);
-    return resp_func(null, 'success');
-  } else {
-    return resp_func('invalid password');
-  }
+    resp_func(err);
+  });
 }
 
 function onCmdParse(channel_server, client, data, resp_func) {
@@ -188,7 +249,8 @@ function channelServerSend(source, dest, msg, data, resp_func) {
   }
 }
 
-class ChannelWorker {
+
+export class ChannelWorker {
   constructor(channel_server, channel_id) {
     this.channel_server = channel_server;
     this.channel_id = channel_id;
@@ -196,6 +258,7 @@ class ChannelWorker {
     assert(m);
     this.channel_type = m[1];
     this.channel_subid = m[2];
+    this.ids = null; // Any extra IDs that get send along with every packet
     this.clients = [];
     //this.msgs = [];
     this.app_worker = null;
@@ -204,29 +267,21 @@ class ChannelWorker {
     this.data.public = this.data.public || {};
     this.data.private = this.data.private || {};
     this.data.channel_id = channel_id;
-    this.channels = {}; // channels we're subscribed to
     this.subscribe_counts = {}; // refcount of subscriptions to other channels
-    this.internal_handlers = {}; // internal handlers for handling messages from other channels (no resp_func)
     this.is_channel_worker = true;
     this.adding_client = null; // The client we're in the middle of adding, don't send them state updates yet
+    ack.initReceiver(this);
     // Modes that can be enabled
-    this.maintain_client_list = false;
     this.emit_join_leave_events = false;
-  }
-  doMaintainClientList() {
-    this.maintain_client_list = true;
-    this.data.public.clients = {};
-    this.onChannelMsgInternal('apply_channel_data', this.onApplyChannelData.bind(this));
   }
   doEmitJoinLeaveEvents() {
     this.emit_join_leave_events = true;
   }
-  onChannelMsgInternal(msg, handler) {
-    assert(!this.internal_handlers[msg]);
-    this.internal_handlers[msg] = handler;
-  }
   setAppWorker(app_worker) {
     this.app_worker = app_worker;
+    if (app_worker.maintain_client_list) {
+      this.data.public.clients = {};
+    }
   }
   addClient(client) {
     this.clients.push(client);
@@ -245,7 +300,7 @@ class ChannelWorker {
       this.channelEmit('join', client.ids);
     }
 
-    if (this.maintain_client_list && !client.is_channel_worker) {
+    if (this.app_worker.maintain_client_list && !client.is_channel_worker) {
       // Clone, not reference, we need to know the old user id for unsubscribing!
       this.setChannelData(`public.clients.${client.id}.ids`, {
         user_id: client.ids.user_id,
@@ -268,32 +323,55 @@ class ChannelWorker {
   }
   subscribe(other_channel_id) {
     console.log(`${this.channel_id}->${other_channel_id}: subscribe`);
-    let channel = this.channel_server.getChannel(other_channel_id);
-    if (!channel) {
-      console.log(' - failed channel creation');
+    this.subscribe_counts[other_channel_id] = (this.subscribe_counts[other_channel_id] || 0) + 1;
+    if (this.subscribe_counts[other_channel_id] !== 1) {
+      console.log(' - already subscribed');
       return;
     }
-    this.subscribe_counts[other_channel_id] = (this.subscribe_counts[other_channel_id] || 0) + 1;
-    if (this.subscribe_counts[other_channel_id] === 1) {
-      if (!channel.addClient(this)) {
-        console.log(' - failed app_worker check');
+    this.sendChannelMessage2(other_channel_id, 'subscribe', null, null, (err, resp_data) => {
+      if (err) {
+        console.log(`${this.other_channel_id}->${other_channel_id} subscribe failed: ${err}`);
         this.subscribe_counts[other_channel_id]--;
+        this.onError(err);
+      } else {
+        // succeeded, nothing special
       }
-    } else {
-      console.log(' - already subscribed');
-    }
+    });
   }
   unsubscribe(other_channel_id) {
-    console.log(`${this.channel_id}->${other_channel_id}: unsubscribe`);
-    assert(this.subscribe_counts[other_channel_id]);
+    console.log(`${this.channel_id}->${other_channel_id}: unsubscribe `);
+    assert(this.channel_type === 'client' || this.subscribe_counts[other_channel_id]);
+    if (!this.subscribe_counts[other_channel_id]) {
+      console.log(' - failed not subscribed');
+      return;
+    }
     --this.subscribe_counts[other_channel_id];
     if (this.subscribe_counts[other_channel_id]) {
       console.log(' - still subscribed (refcount)');
       return;
     }
+
     delete this.subscribe_counts[other_channel_id];
-    let channel = this.channel_server.getChannel(other_channel_id);
-    channel.removeClient(this);
+    // TODO: Disable autocreate for this call?
+    this.sendChannelMessage2(other_channel_id, 'unsubscribe', null, null, (err, resp_data) => {
+      if (err === exchange.ERR_NOT_FOUND) {
+        // This is fine, just ignore
+        console.log(`${this.other_channel_id}->${other_channel_id} unsubscribe (silently) failed: ${err}`);
+      } else if (err) {
+        console.log(`${this.other_channel_id}->${other_channel_id} unsubscribe failed: ${err}`);
+        this.onError(err);
+      } else {
+        // succeeded, nothing special
+      }
+    });
+  }
+  unsubscribeAll() {
+    for (let channel_id in this.subscribe_counts) {
+      let count = this.subscribe_counts[channel_id];
+      for (let ii = 0; ii < count; ++ii) {
+        this.unsubscribe(channel_id);
+      }
+    }
   }
   removeClient(client) {
     let idx = this.clients.indexOf(client);
@@ -307,7 +385,7 @@ class ChannelWorker {
       this.channelEmit('leave', client.ids);
     }
 
-    if (this.maintain_client_list && !client.is_channel_worker) {
+    if (this.app_worker.maintain_client_list && !client.is_channel_worker) {
       this.setChannelData(`public.clients.${client.id}`, undefined);
       if (client.ids.user_id) {
         this.unsubscribe(`user.${client.ids.user_id}`);
@@ -318,7 +396,7 @@ class ChannelWorker {
     if (this.app_worker && this.app_worker.handleClientChanged) {
       this.app_worker.handleClientChanged(client);
     }
-    if (this.maintain_client_list && !client.is_channel_worker) {
+    if (this.app_worker.maintain_client_list && !client.is_channel_worker) {
       let old_ids = this.data.public.clients[client.id] && this.data.public.clients[client.id].ids || {};
       if (old_ids.user_id !== client.ids.user_id) {
         if (old_ids.user_id) {
@@ -336,12 +414,13 @@ class ChannelWorker {
     }
   }
   onApplyChannelData(source, data) {
+    let channel_worker = this.channel_worker;
     if (this.maintain_client_list) {
       if (source.channel_type === 'user' && data.key === 'public.display_name') {
-        for (let client_id in this.data.public.clients) {
-          let client_ids = this.data.public.clients[client_id].ids;
+        for (let client_id in channel_worker.data.public.clients) {
+          let client_ids = channel_worker.data.public.clients[client_id].ids;
           if (client_ids.user_id === source.channel_subid) {
-            this.setChannelData(`public.clients.${client_id}.ids.display_name`, data.value);
+            channel_worker.setChannelData(`public.clients.${client_id}.ids.display_name`, data.value);
           }
         }
       }
@@ -388,8 +467,8 @@ class ChannelWorker {
     if (!resp_func) {
       resp_func = noop;
     }
-    if (this.internal_handlers[msg]) {
-      this.internal_handlers[msg](source, data);
+    if (this.filters[msg]) {
+      this.filters[msg](source, data);
     }
     if (this.app_worker.handlers[msg]) {
       this.app_worker.handlers[msg].call(this.app_worker, source, data, resp_func);
@@ -400,6 +479,59 @@ class ChannelWorker {
   sendChannelMessage(dest, msg, data, resp_func) {
     channelServerSend(this, dest, msg, data, resp_func);
   }
+
+  sendChannelMessage2(dest, msg, data, resp_func) {
+    channelServerSend2(this.client_channel, dest, msg, null, data, resp_func);
+  }
+
+  // source has at least { type, id }, possibly also .user_id and .display_name if type === 'client'
+  channelMessage2(source, msg, data, resp_func) {
+    let had_handler = false;
+    assert(resp_func);
+    if (this.filters[msg]) {
+      this.filters[msg](source, data);
+      had_handler = true;
+    }
+    if (this.app_worker.handlers[msg]) {
+      this.app_worker.handlers[msg].call(this.app_worker, source, data, resp_func);
+    } else {
+      // No use handler for this message
+      if (had_handler) {
+        // But, we had a filter (probably something internal) that dealt with it, silently continue;
+        resp_func();
+      } else {
+        resp_func(`No handler registered for "${msg}"`);
+      }
+    }
+  }
+
+  onError(msg) {
+    console.error(`ChannelWorker(${this.channel_id}) error:`, msg);
+  }
+
+  // Default error handler
+  handleError(src, data, resp_func) {
+    let self = this.channel_worker;
+    self.onError(`Unhandled error from ${src}: ${data}`);
+    resp_func();
+  }
+
+  // source is a string channel_id
+  handleMessage(source, net_data) {
+    let channel_worker = this;
+    let ids = net_data.ids || {};
+    // ids.channel_id = source;
+    let split = source.split('.');
+    assert(split.length === 2);
+    ids.type = split[0];
+    ids.id = split[1];
+
+    ack.handleMessage(channel_worker, source, net_data, function sendFunc(msg, err, data, resp_func) {
+      channelServerSend2(channel_worker, source, msg, err, data, resp_func);
+    }, function handleFunc(msg, data, resp_func) {
+      channel_worker.channelMessage2(ids, msg, data, resp_func);
+    });
+  }
 }
 
 class ChannelServer {
@@ -408,34 +540,84 @@ class ChannelServer {
     this.channel_types = {};
     this.channels = {};
     default_workers.init(this);
+    client_worker.init(this);
   }
 
-  getChannel(channel_id) {
-    if (this.channels[channel_id]) {
-      return this.channels[channel_id];
-    }
+  // getChannelLocal(channel_id) {
+  //   if (this.channels[channel_id]) {
+  //     return this.channels[channel_id];
+  //   }
+  //   let channel_type = channel_id.split('.')[0];
+  //   if (!this.channel_types[channel_type]) {
+  //     assert(false); // unknown channel type
+  //     return null;
+  //   }
+  //   let Ctor = this.channel_types[channel_type];
+  //   if (!Ctor.autocreate) {
+  //     // not an auto-creating channel type
+  //     return null;
+  //   }
+  //   let channel = new ChannelWorker(this, channel_id);
+  //   this.channels[channel_id] = channel;
+  //   channel.setAppWorker(new Ctor(channel, channel_id));
+  //   return channel;
+  // }
+
+  autoCreateChannel(channel_type, subid, cb) {
+    let channel_id = `${channel_type}.${subid}`;
+    assert(!this.channels[channel_id]);
+    let Ctor = this.channel_types[channel_type];
+    assert(Ctor);
+    assert(Ctor.autocreate);
+    let channel = new ChannelWorker(this, channel_id);
+    exchange.register(channel.channel_id, channel.handleMessage.bind(channel), (err) => {
+      if (err) {
+        // someone else create an identically named channel at the same time, discard ours
+      } else {
+        // success
+        this.channels[channel_id] = channel;
+        channel.setAppWorker(new Ctor(channel, channel_id));
+      }
+      cb(err);
+    });
+  }
+
+  createChannelLocal(channel_id) {
+    assert(!this.channels[channel_id]);
     let channel_type = channel_id.split('.')[0];
+    let Ctor = this.channel_types[channel_type];
+    assert(Ctor);
+    // fine whether it's Ctor.autocreate or not
     let channel = new ChannelWorker(this, channel_id);
     this.channels[channel_id] = channel;
-    if (this.channel_types[channel_type]) {
-      let Ctor = this.channel_types[channel_type];
-      channel.setAppWorker(new Ctor(channel, channel_id));
-    }
+    channel.setAppWorker(new Ctor(channel, channel_id));
+    exchange.register(channel.channel_id, channel.handleMessage.bind(channel), function (err) {
+      // someone else create an identically named channel, shouldn't be possible to happen!
+      assert(!err);
+    });
     return channel;
+  }
+
+  clientIdFromWSClient(client) { // eslint-disable-line class-methods-use-this
+    // TODO: combine a UID for our process with client.id
+    return `u${client.id}`;
   }
 
   init(ds_store, ws_server) {
     this.ds_store = ds_store;
     this.ws_server = ws_server;
-    ws_server.on('client', function (client) {
-      assert(!client.channels);
-      client.channels = {}; // channel_id -> channel_object reference
+    ws_server.on('client', (client) => {
       assert(!client.ids);
       client.ids = {
-        client_id: client.id,
+        type: 'client',
+        id: this.clientIdFromWSClient(client),
+        // ws_client_id: client.id // not needed anymore?
         user_id: null,
         display_name: null,
       };
+      client.client_channel = this.createChannelLocal(`client.${client.ids.id}`);
+      client.client_channel.app_worker.client = client;
+      client.ids.channel_id = client.client_channel.channel_id;
     });
     ws_server.on('disconnect', onClientDisconnect.bind(this, this));
     ws_server.onMsg('subscribe', onSubscribe.bind(this, this));
@@ -471,29 +653,57 @@ class ChannelServer {
     }
   }
 
-  addChannelWorker(channel_type, ctor, options) {
+  registerChannelWorker(channel_type, ctor, options) {
+    options = options || {};
     this.channel_types[channel_type] = ctor;
+    ctor.autocreate = options.autocreate;
+    ctor.prototype.maintain_client_list = Boolean(options.maintain_client_list);
+
     // Register handlers
     if (!ctor.prototype.cmd_parse) {
       let cmdparser = ctor.prototype.cmd_parse = cmd_parse.create();
-      if (options && options.cmds) {
+      if (options.cmds) {
         for (let cmd in options.cmds) {
           cmdparser.register(cmd, options.cmds[cmd]);
         }
       }
     }
+    function addUnique(map, msg, cb) {
+      assert(!map[msg]);
+      map[msg] = cb;
+    }
     if (!ctor.prototype.handlers) {
       let handlers = ctor.prototype.handlers = {};
-      if (options && options.handlers) {
+      if (options.handlers) {
         for (let msg in options.handlers) {
-          assert(!handlers[msg]);
-          handlers[msg] = options.handlers[msg];
+          addUnique(handlers, msg, options.handlers[msg]);
         }
+      }
+      // Built-in and default handlers
+      if (!handlers.error) {
+        handlers.error = ChannelWorker.prototype.handleError;
+      }
+      addUnique(handlers, 'subscribe', ChannelWorker.prototype.onSubscribe);
+      addUnique(handlers, 'unsubscribe', ChannelWorker.prototype.onUnSubscribe);
+    }
+    if (!ctor.prototype.filters) {
+      let filters = ctor.prototype.filters = {};
+
+      if (options.filters) {
+        for (let msg in options.filters) {
+          addUnique(filters, msg, options.filters[msg]);
+        }
+      }
+
+      // Built-in and default filters
+      if (ctor.prototype.maintain_client_list) {
+        addUnique(filters, 'apply_channel_data', ChannelWorker.prototype.onApplyChannelData);
       }
     }
   }
 
   getChannelsByType(channel_type) {
+    // TODO: If this is needed distributed, this needs to use exchange (perhaps sendToChannelsByType() instead)
     let ret = [];
     for (let channel_id in this.channels) {
       let channel_type_test = channel_id.split('.')[0];

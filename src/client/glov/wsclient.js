@@ -2,14 +2,13 @@
 // Released under MIT License: https://opensource.org/licenses/MIT
 /* global WebSocket */
 
+const ack = require('../../common/ack.js');
 const assert = require('assert');
 const { min } = Math;
 const wscommon = require('../../common/wscommon.js');
 
 export function WSClient() {
-  this.last_pak_id = 0;
   this.id = null;
-  this.resp_cbs = {};
   this.handlers = {};
   this.socket = null;
   this.connected = false;
@@ -19,6 +18,7 @@ export function WSClient() {
   this.disconnect_time = 0;
   this.last_receive_time = Date.now();
   this.last_send_time = Date.now();
+  ack.initReceiver(this);
 
   let path = document.location.toString().match(/^[^#?]+/u)[0]; // remove search and anchor
   if (path.slice(-1) !== '/') {
