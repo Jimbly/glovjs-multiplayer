@@ -1,3 +1,6 @@
+// Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
+// Released under MIT License: https://opensource.org/licenses/MIT
+
 const glov_engine = require('./engine.js');
 const local_storage = require('./local_storage.js');
 const subscription_manager = require('./subscription_manager.js');

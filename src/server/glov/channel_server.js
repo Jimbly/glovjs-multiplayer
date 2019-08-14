@@ -1,3 +1,6 @@
+// Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
+// Released under MIT License: https://opensource.org/licenses/MIT
+
 const assert = require('assert');
 const cmd_parse = require('../../common/cmd_parse.js');
 const default_workers = require('./default_workers.js');
