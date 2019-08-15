@@ -239,15 +239,15 @@ export function main() {
   function testInit(dt) {
     engine.setState(test);
 
-    // test_room = net.subs.getChannel('test.test', true);
-    // pos_manager.reinit({
-    //   channel: test_room,
-    //   default_pos: vec2(
-    //     (Math.random() * (game_width - sprite_size) + (sprite_size * 0.5)),
-    //     (Math.random() * (game_height - sprite_size) + (sprite_size * 0.5))
-    //   ),
-    // });
-    // app.chat_ui.setChannel(test_room);
+    test_room = net.subs.getChannel('test.test', true);
+    pos_manager.reinit({
+      channel: test_room,
+      default_pos: vec2(
+        (Math.random() * (game_width - sprite_size) + (sprite_size * 0.5)),
+        (Math.random() * (game_height - sprite_size) + (sprite_size * 0.5))
+      ),
+    });
+    app.chat_ui.setChannel(test_room);
 
     test(dt);
   }

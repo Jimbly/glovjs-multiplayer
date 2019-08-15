@@ -1,13 +1,15 @@
-class TestWorker {
-  constructor(channel_worker, channel_id) {
-    this.channel_worker = channel_worker;
-    this.channel_id = channel_id;
-    channel_worker.doEmitJoinLeaveEvents();
-  }
+const { ChannelWorker } = require('./glov/channel_worker.js');
+
+class TestWorker extends ChannelWorker {
+  // constructor(channel_server, channel_id) {
+  //   super(channel_server, channel_id);
+  // }
 }
+TestWorker.prototype.maintain_client_list = true;
+TestWorker.prototype.emit_join_leave_events = true;
 
 export function init(channel_server) {
   channel_server.registerChannelWorker('test', TestWorker, {
-    maintain_client_list: true,
+    autocreate: true,
   });
 }

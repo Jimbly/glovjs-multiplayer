@@ -80,7 +80,7 @@ class ChatUI {
             this.cmd_parse.handle(null, command, (err, resp) => {
               if (err && this.cmd_parse.was_not_found) {
                 // forward to server
-                net.client.send('cmdparse', command, handleCmdParse);
+                net.subs.sendCmdParse(command, handleCmdParse);
               } else {
                 handleCmdParse(err, resp);
               }

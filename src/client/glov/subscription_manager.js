@@ -255,6 +255,34 @@ SubscriptionManager.prototype.login = function (username, password, resp_func) {
   });
 };
 
+SubscriptionManager.prototype.sendCmdParse = function (command, resp_func) {
+  let self = this;
+  let channel_ids = Object.keys(self.channels);
+  let idx = 0;
+  let last_error = 'Unknown command';
+  function tryNext() {
+    let channel_id;
+    do {
+      channel_id = channel_ids[idx++];
+    } while (channel_id && !self.channels[channel_id]);
+    if (!channel_id) {
+      return resp_func(last_error);
+    }
+    return self.client.send('channel_msg', { channel_id: channel_id, msg: 'cmdparse', data: command },
+      function (err, resp) {
+        if (err || resp && resp.found) {
+          return resp_func(err, resp ? resp.resp : null);
+        }
+        // otherwise, was not found
+        if (resp && resp.err) {
+          last_error = resp.err;
+        }
+        return tryNext();
+      }
+    );
+  }
+  tryNext();
+};
 
 export function create(client) {
   return new SubscriptionManager(client);

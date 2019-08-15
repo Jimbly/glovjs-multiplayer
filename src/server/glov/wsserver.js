@@ -107,8 +107,6 @@ WSServer.prototype.init = function (server) {
     console.log(`WS Client ${client.id} connected to ${req.url} from ${client.addr}` +
       ` (${Object.keys(ws_server.clients).length} clients connected)`);
 
-    client.send('internal_client_id', { id: client.id, secret: client.secret });
-
     socket.on('close', function () {
       // disable this for testing
       client.onClose();
@@ -121,6 +119,9 @@ WSServer.prototype.init = function (server) {
       client.onError(e);
     });
     ws_server.emit('client', client);
+
+    // after the .emit('client') has a chance to set client.ids
+    client.send('internal_client_id', { id: client.ids ? client.ids.id : client.id, secret: client.secret });
 
     let query = querystring.parse(url.parse(req.url).query);
     let reconnect_id = Number(query.reconnect);

@@ -2,18 +2,18 @@
 // Released under MIT License: https://opensource.org/licenses/MIT
 
 const assert = require('assert');
+const { ChannelWorker } = require('./channel_worker.js');
 
-class DefaultUserWorker {
-  constructor(channel_worker, channel_id) {
-    this.channel_worker = channel_worker;
-    this.channel_id = channel_id; // user.1234
-    this.user_id = channel_worker.channel_subid; // 1234
+class DefaultUserWorker extends ChannelWorker {
+  constructor(channel_server, channel_id) {
+    super(channel_server, channel_id);
+    this.user_id = this.channel_subid; // 1234
   }
   cmdRename(new_name, resp_func) {
     if (!new_name) {
       return resp_func('Missing name');
     }
-    this.channel_worker.setChannelData('public.display_name', new_name);
+    this.setChannelData('public.display_name', new_name);
     return resp_func(null, 'Successfully renamed');
   }
   handleLogin(src, data, resp_func) {
@@ -21,18 +21,21 @@ class DefaultUserWorker {
       return resp_func('missing password');
     }
 
-    if (!this.channel_worker.getChannelData('private.password')) {
-      this.channel_worker.setChannelData('private.password', data.password);
-      this.channel_worker.setChannelData('public.display_name', this.user_id);
+    if (!this.getChannelData('private.password')) {
+      this.setChannelData('private.password', data.password);
+      this.setChannelData('public.display_name', this.user_id);
     }
-    if (this.channel_worker.getChannelData('private.password') !== data.password) {
+    if (this.getChannelData('private.password') !== data.password) {
       return resp_func('invalid password');
     }
     return resp_func(null, {
-      display_name: this.channel_worker.getChannelData('public.display_name'),
+      display_name: this.getChannelData('public.display_name'),
     });
   }
-  handleSetChannelData(src/*, key, value*/) {
+  handleSetChannelData(src, key, value) {
+    if (!this.defaultHandleSetChannelData(src, key, value)) {
+      return false;
+    }
     assert(src);
     assert(src.type);
     if (src.type !== 'client') {

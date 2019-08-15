@@ -48,7 +48,7 @@ export function handleMessage(receiver, source, net_data, send_func, handle_func
       // But, the other end is not expecting a response from this packet, black-hole it
       if (resp_func) {
         // We better not be expecting a response to our response!
-        receiver.onError('Sending a response to a packet that did not expect' +
+        receiver.onError(`Sending a response to a packet (${msg}) that did not expect` +
           ' one, but we are expecting a response');
         return;
       }
@@ -69,6 +69,7 @@ export function handleMessage(receiver, source, net_data, send_func, handle_func
     receiver.responses_waiting--;
     send_func(pak_id, err, resp_data, resp_func);
   }
+  respFunc.expecting_response = expecting_response;
 
   if (typeof msg === 'number') {
     let cb = receiver.resp_cbs[msg];
