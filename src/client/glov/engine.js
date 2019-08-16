@@ -160,6 +160,14 @@ export function setState(new_state) {
   }
 }
 
+export function stateActive(test_state) {
+  if (is_loading) {
+    return after_loading_state === test_state;
+  } else {
+    return app_state === test_state;
+  }
+}
+
 let mspf = 1000;
 let mspf_update_time = Date.now();
 let mspf_frame_count = 0;

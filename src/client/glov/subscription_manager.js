@@ -29,7 +29,7 @@ util.inherits(ClientChannelWorker, EventEmitter);
 
 // cb(data)
 ClientChannelWorker.prototype.onSubscribe = function (cb) {
-  assert(this.subscriptions);
+  assert(this.subscriptions || this.autosubscribed);
   this.on('subscribe', cb);
   if (this.got_subscribe) {
     cb(this.data); // eslint-disable-line callback-return
@@ -38,7 +38,7 @@ ClientChannelWorker.prototype.onSubscribe = function (cb) {
 
 // cb(data)
 ClientChannelWorker.prototype.onceSubscribe = function (cb) {
-  assert(this.subscriptions);
+  assert(this.subscriptions || this.autosubscribed);
   if (this.got_subscribe) {
     cb(this.data); // eslint-disable-line callback-return
   } else {
@@ -225,7 +225,9 @@ SubscriptionManager.prototype.getMyUserChannel = function () {
   if (!user_id) {
     return null;
   }
-  return this.getChannel(`user.${user_id}`);
+  let channel = this.getChannel(`user.${user_id}`);
+  channel.autosubscribed = true;
+  return channel;
 };
 
 SubscriptionManager.prototype.unsubscribe = function (channel_id) {
