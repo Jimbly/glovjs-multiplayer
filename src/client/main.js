@@ -1,7 +1,6 @@
 /*eslint global-require:off*/
 
 const cmd_parse = require('../common/cmd_parse.js').create();
-const camera2d = require('./glov/camera2d.js');
 const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const fs = require('fs');
@@ -177,18 +176,6 @@ export function main() {
 
     app.chat_ui.run(dt);
     app.account_ui.showLogin();
-
-    if (net.client.disconnected) {
-      ui.font.drawSizedAligned(
-        glov_font.style(null, {
-          outline_width: 2,
-          outline_color: 0x000000ff,
-          color: 0xDD2020ff
-        }),
-        camera2d.x0(), camera2d.y0(), Z.DEBUG,
-        ui.font_height, glov_font.ALIGN.HVCENTER, camera2d.w(), camera2d.h() * 0.20,
-        `Connection lost, attempting to reconnect (${(net.client.timeSinceDisconnect()/1000).toFixed(0)})...`);
-    }
 
     if (!test.color_sprite) {
       test.color_sprite = v4copy(vec4(), color_white);
