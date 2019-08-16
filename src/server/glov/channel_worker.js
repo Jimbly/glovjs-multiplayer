@@ -243,6 +243,19 @@ export class ChannelWorker {
     }
   }
 
+  onSetIfChannelData(source, data, resp_func) {
+    if (source.type === 'client') {
+      // deny
+      return resp_func('ERR_NOT_ALLOWED');
+    }
+    let old_value = dot_prop.get(this.data, data.key);
+    if (old_value !== data.set_if) {
+      return resp_func('ERR_SETIF_MISMATCH');
+    }
+    this.setChannelDataInternal(source, data.key, data.value, data.q);
+    return resp_func();
+  }
+
   onSetChannelData(source, data) {
     this.setChannelDataInternal(source, data.key, data.value, data.q);
   }

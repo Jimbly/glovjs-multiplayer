@@ -206,6 +206,7 @@ class ChannelServer {
       addUnique(handlers, 'unsubscribe', ChannelWorker.prototype.onUnSubscribe);
       addUnique(handlers, 'client_changed', ChannelWorker.prototype.onClientChanged);
       addUnique(handlers, 'set_channel_data', ChannelWorker.prototype.onSetChannelData);
+      addUnique(handlers, 'setif_channel_data', ChannelWorker.prototype.onSetIfChannelData);
       addUnique(handlers, 'get_channel_data', ChannelWorker.prototype.onGetChannelData);
       addUnique(handlers, 'broadcast', ChannelWorker.prototype.onBroadcast);
       addUnique(handlers, 'cmdparse', ChannelWorker.prototype.onCmdParse);
