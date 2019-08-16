@@ -98,6 +98,7 @@ ClientChannelWorker.prototype.send = function (msg, data, opts, resp_func) {
 };
 
 function SubscriptionManager(client) {
+  EventEmitter.call(this);
   this.client = client;
   this.on_login = null;
   this.channels = {};
@@ -109,14 +110,15 @@ function SubscriptionManager(client) {
   client.onMsg('channel_msg', this.handleChannelMessage.bind(this));
   client.onMsg('server_time', this.handleServerTime.bind(this));
 }
+util.inherits(SubscriptionManager, EventEmitter);
 
 SubscriptionManager.prototype.handleConnect = function () {
   this.connected = true;
-  // let reconnect = false;
+  let reconnect = false;
   if (this.first_connect) {
     this.first_connect = false;
   } else {
-    // reconnect = true;
+    reconnect = true;
   }
 
   let subs = this;
@@ -128,6 +130,7 @@ SubscriptionManager.prototype.handleConnect = function () {
         subs.client.send('subscribe', channel_id);
       }
     }
+    subs.emit('connect', reconnect);
   }
 
   if (this.was_logged_in) {

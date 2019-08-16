@@ -126,17 +126,19 @@ class ChannelServer {
     return channel;
   }
 
-  clientIdFromWSClient(client) { // eslint-disable-line class-methods-use-this
-    // TODO: combine a UID for our process with client.id
-    return `u${client.id}`;
+  clientIdFromWSClient(client) {
+    return `${this.csuid}-${client.id}`;
   }
 
   init(ds_store, ws_server) {
+    this.csuid = String(process.pid); // TODO: use exchange to get a unique UID
     this.ds_store = ds_store;
     this.ws_server = ws_server;
     client_comm.init(this);
 
     default_workers.init(this);
+
+    this.csworker = this.createChannelLocal(`channel_server.${this.csuid}`);
 
     this.tick_func = this.doTick.bind(this);
     this.tick_time = 250;
@@ -204,6 +206,7 @@ class ChannelServer {
       addUnique(handlers, 'unsubscribe', ChannelWorker.prototype.onUnSubscribe);
       addUnique(handlers, 'client_changed', ChannelWorker.prototype.onClientChanged);
       addUnique(handlers, 'set_channel_data', ChannelWorker.prototype.onSetChannelData);
+      addUnique(handlers, 'get_channel_data', ChannelWorker.prototype.onGetChannelData);
       addUnique(handlers, 'broadcast', ChannelWorker.prototype.onBroadcast);
       addUnique(handlers, 'cmdparse', ChannelWorker.prototype.onCmdParse);
     }
@@ -224,8 +227,11 @@ class ChannelServer {
     }
   }
 
-  getChannelsByType(channel_type) {
-    // TODO: If this is needed distributed, this needs to use exchange (perhaps sendToChannelsByType() instead)
+  sendAsChannelServer(dest, msg, data, resp_func) {
+    this.csworker.sendChannelMessage(dest, msg, data, resp_func);
+  }
+
+  getLocalChannelsByType(channel_type) {
     let ret = [];
     for (let channel_id in this.local_channels) {
       let channel_type_test = channel_id.split('.')[0];

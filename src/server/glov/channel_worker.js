@@ -34,6 +34,10 @@ export class ChannelWorker {
     }
   }
 
+  numSubscribers() {
+    return this.subscribers.length;
+  }
+
   onSubscribe(src, data, resp_func) {
     let { channel_id, user_id } = src;
     let is_client = src.type === 'client';
@@ -244,6 +248,14 @@ export class ChannelWorker {
   }
   setChannelData(key, value, q) {
     this.setChannelDataInternal(this.core_ids, key, value, q);
+  }
+
+  onGetChannelData(source, data, resp_func) {
+    if (source.type === 'client') {
+      // deny
+      return resp_func('ERR_NOT_ALLOWED');
+    }
+    return resp_func(null, this.getChannelData(data));
   }
 
   defaultHandleSetChannelData(source, key, value) { // eslint-disable-line class-methods-use-this

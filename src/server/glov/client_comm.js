@@ -26,9 +26,6 @@ function onSubscribe(channel_server, client, channel_id) {
 }
 
 function onSetChannelData(channel_server, client, data, resp_func) {
-  if (!data.q) {
-    console.log(`client_id:${client.id}->${data.channel_id}: set_channel_data ${logdata(data)}`);
-  }
   data.key = String(data.key);
   let channel_id = data.channel_id;
   assert(channel_id);

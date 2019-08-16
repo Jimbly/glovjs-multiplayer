@@ -50,6 +50,9 @@ class DefaultUserWorker extends ChannelWorker {
   }
 }
 
+class ChannelServerWorker extends ChannelWorker {
+}
+
 export function init(channel_server) {
   channel_server.registerChannelWorker('user', DefaultUserWorker, {
     autocreate: true,
@@ -59,5 +62,8 @@ export function init(channel_server) {
     handlers: {
       login: DefaultUserWorker.prototype.handleLogin,
     },
+  });
+  channel_server.registerChannelWorker('channel_server', ChannelServerWorker, {
+    autocreate: false,
   });
 }
