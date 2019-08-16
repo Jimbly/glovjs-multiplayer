@@ -41,6 +41,7 @@ export function WSClient() {
   this.connect(false);
 
   this.onMsg('internal_client_id', this.onInternalClientID.bind(this));
+  this.onMsg('error', this.onError.bind(this));
 }
 
 WSClient.prototype.timeSinceDisconnect = function () {
@@ -129,6 +130,7 @@ WSClient.prototype.connect = function (for_reconnect) {
         // ignore
       }
     }
+    ack.failAll(client);
   }
 
   function retry(skip_close) {

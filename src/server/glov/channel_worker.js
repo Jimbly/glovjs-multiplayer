@@ -37,6 +37,11 @@ export class ChannelWorker {
   onSubscribe(src, data, resp_func) {
     let { channel_id, user_id } = src;
     let is_client = src.type === 'client';
+
+    if (is_client && this.require_login && !user_id) {
+      return resp_func('ERR_LOGIN_REQUIRED');
+    }
+
     this.subscribers.push(channel_id);
     this.adding_client = channel_id;
 
@@ -47,17 +52,23 @@ export class ChannelWorker {
       return resp_func('ERR_NOT_ALLOWED_BY_WORKER');
     }
 
-    if (this.emit_join_leave_events && is_client) {
-      this.channelEmit('join', src);
-    }
-
-    if (this.maintain_client_list && is_client) {
+    let ids;
+    if ((this.emit_join_leave_events || this.maintain_client_list) && is_client) {
       // Clone, not reference, we need to know the old user id for unsubscribing!
-      this.setChannelData(`public.clients.${src.id}.ids`, {
+      // Also, just need these 3 ids
+      ids = {
         user_id,
         client_id: src.id,
         display_name: src.display_name,
-      });
+      };
+    }
+
+    if (this.emit_join_leave_events && is_client) {
+      this.channelEmit('join', ids);
+    }
+
+    if (this.maintain_client_list && is_client) {
+      this.setChannelData(`public.clients.${src.id}.ids`, ids);
       if (user_id) {
         this.subscribeOther(`user.${user_id}`);
       }
@@ -75,7 +86,11 @@ export class ChannelWorker {
     let { channel_id, user_id } = src;
     let is_client = src.type === 'client';
     let idx = this.subscribers.indexOf(channel_id);
-    assert(idx !== -1);
+    if (idx === -1) {
+      // This can happen if a client is unsubscribing before it got the message
+      // back saying its subscription attempt failed
+      return void resp_func('ERR_NOT_SUBSCRIBED');
+    }
     this.subscribers.splice(idx, 1);
     if (this.handleClientDisconnect) {
       this.handleClientDisconnect(src);
@@ -90,6 +105,7 @@ export class ChannelWorker {
         this.unsubscribeOther(`user.${user_id}`);
       }
     }
+    resp_func();
   }
 
   isSubscribedTo(other_channel_id) {
@@ -102,9 +118,9 @@ export class ChannelWorker {
       console.log(`${this.channel_id}->${other_channel_id}: subscribe - already subscribed`);
       return;
     }
-    this.sendChannelMessage(other_channel_id, 'subscribe', null, null, (err, resp_data) => {
+    this.sendChannelMessage(other_channel_id, 'subscribe', undefined, (err, resp_data) => {
       if (err) {
-        console.log(`${this.other_channel_id}->${other_channel_id} subscribe failed: ${err}`);
+        console.log(`${this.channel_id}->${other_channel_id} subscribe failed: ${err}`);
         this.subscribe_counts[other_channel_id]--;
         this.onError(err);
       } else {
@@ -126,12 +142,12 @@ export class ChannelWorker {
 
     delete this.subscribe_counts[other_channel_id];
     // TODO: Disable autocreate for this call?
-    this.sendChannelMessage(other_channel_id, 'unsubscribe', null, null, (err, resp_data) => {
+    this.sendChannelMessage(other_channel_id, 'unsubscribe', undefined, (err, resp_data) => {
       if (err === exchange.ERR_NOT_FOUND) {
         // This is fine, just ignore
-        console.log(`${this.other_channel_id}->${other_channel_id} unsubscribe (silently) failed: ${err}`);
+        console.log(`${this.channel_id}->${other_channel_id} unsubscribe (silently) failed: ${err}`);
       } else if (err) {
-        console.log(`${this.other_channel_id}->${other_channel_id} unsubscribe failed: ${err}`);
+        console.log(`${this.channel_id}->${other_channel_id} unsubscribe failed: ${err}`);
         this.onError(err);
       } else {
         // succeeded, nothing special
@@ -154,8 +170,8 @@ export class ChannelWorker {
     if (this.handleClientChanged) {
       this.handleClientChanged(src);
     }
-    if (this.maintain_client_list && is_client) {
-      let old_ids = this.data.public.clients[client_id] && this.data.public.clients[client_id].ids || {};
+    if (this.maintain_client_list && is_client && this.data.public.clients[client_id]) {
+      let old_ids = this.data.public.clients[client_id].ids || {};
       if (old_ids.user_id !== user_id) {
         if (old_ids.user_id) {
           this.unsubscribeOther(`user.${old_ids.user_id}`);
@@ -177,9 +193,6 @@ export class ChannelWorker {
       if (source.type === 'user' && data.key === 'public.display_name') {
         for (let client_id in this.data.public.clients) {
           let client_ids = this.data.public.clients[client_id].ids;
-          if (!client_ids) {
-            console.log(this.data.public.clients);
-          }
           if (client_ids.user_id === source.id) {
             this.setChannelData(`public.clients.${client_id}.ids.display_name`, data.value);
           }
@@ -241,6 +254,10 @@ export class ChannelWorker {
     // Do not allow modifying of other users' client data
     if (key.startsWith('public.clients.')) {
       if (!key.startsWith(`public.clients.${source.id}.`)) {
+        return false;
+      }
+      // Do not allow modifying of clients that do not exist
+      if (!this.data.public.clients[source.id]) {
         return false;
       }
     }
@@ -311,7 +328,7 @@ export class ChannelWorker {
 
   // Default error handler
   handleError(src, data, resp_func) {
-    this.onError(`Unhandled error from ${src}: ${data}`);
+    this.onError(`Unhandled error from ${src.type}.${src.id}: ${data}`);
     resp_func();
   }
 
@@ -335,3 +352,4 @@ export class ChannelWorker {
 // Overrideable by child class's prototype
 ChannelWorker.prototype.maintain_client_list = false;
 ChannelWorker.prototype.emit_join_leave_events = false;
+ChannelWorker.prototype.require_login = false;

@@ -140,3 +140,14 @@ export function nextHighestPowerOfTwo(x) {
   }
   return x + 1;
 }
+
+export function logdata(data) {
+  if (data === undefined) {
+    return '';
+  }
+  let r = JSON.stringify(data);
+  if (r.length < 120) {
+    return r;
+  }
+  return `${r.slice(0, 120-3)}...`;
+}

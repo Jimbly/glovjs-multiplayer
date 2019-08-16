@@ -22,6 +22,7 @@ function ClientChannelWorker(subs, channel_id) {
   this.onMsg('channel_data', this.handleChannelData.bind(this));
   this.onMsg('apply_channel_data', this.handleApplyChannelData.bind(this));
   this.logged_in = false;
+  this.was_logged_in = false;
   this.logging_in = false;
 }
 util.inherits(ClientChannelWorker, EventEmitter);
@@ -98,7 +99,6 @@ ClientChannelWorker.prototype.send = function (msg, data, opts, resp_func) {
 
 function SubscriptionManager(client) {
   this.client = client;
-  this.on_connect = null;
   this.on_login = null;
   this.channels = {};
 
@@ -112,22 +112,48 @@ function SubscriptionManager(client) {
 
 SubscriptionManager.prototype.handleConnect = function () {
   this.connected = true;
-  let reconnect = false;
+  // let reconnect = false;
   if (this.first_connect) {
     this.first_connect = false;
   } else {
-    reconnect = true;
+    // reconnect = true;
   }
-  if (this.on_connect) {
-    this.on_connect(reconnect);
-  }
-  // (re-)subscribe to all channels
-  for (let channel_id in this.channels) {
-    let channel = this.channels[channel_id];
-    if (channel.subscriptions) {
-      this.client.send('subscribe', channel_id);
+
+  let subs = this;
+  function resub() {
+    // (re-)subscribe to all channels
+    for (let channel_id in subs.channels) {
+      let channel = subs.channels[channel_id];
+      if (channel.subscriptions) {
+        subs.client.send('subscribe', channel_id);
+      }
     }
   }
+
+  if (this.was_logged_in) {
+    // Try to re-connect to existing login
+    this.loginInternal(this.login_credentials, function (err) {
+      if (err && err === 'ERR_DISCONNECTED') {
+        // we got disconnected while trying to log in, we'll retry after reconnection
+      } else if (err) {
+        // Error logging in upon re-connection, no good way to handle this?
+        // TODO: Show some message to the user and prompt them to refresh?  Stay in "disconnected" state?
+        assert(false);
+      } else {
+        resub();
+      }
+    });
+  } else {
+    // Try auto-login
+    if (local_storage.get('name') && local_storage.get('password')) {
+      this.login(local_storage.get('name'), local_storage.get('password'), function () {
+        // ignore error on auto-login
+      });
+    }
+
+    resub();
+  }
+
 };
 
 SubscriptionManager.prototype.handleChannelMessage = function (data, resp_func) {
@@ -212,28 +238,39 @@ SubscriptionManager.prototype.unsubscribe = function (channel_id) {
   }
 };
 
-SubscriptionManager.prototype.onConnect = function (cb) {
-  assert(!this.on_connect);
-  this.on_connect = cb;
-};
-
 SubscriptionManager.prototype.onLogin = function (cb) {
   assert(!this.on_login);
   this.on_login = cb;
+  if (this.logged_in) {
+    return void cb();
+  }
 };
 
 SubscriptionManager.prototype.loggedIn = function () {
-  return this.logged_in ? this.logged_in_username : false;
+  return this.logged_in ? this.logged_in_username || 'missing_name' : false;
 };
 
-SubscriptionManager.prototype.login = function (username, password, resp_func) {
+SubscriptionManager.prototype.loginInternal = function (login_credentials, resp_func) {
   if (this.logging_in) {
     return resp_func('Login already in progress');
   }
   this.logging_in = true;
   this.logged_in = false;
-  // client.send('channel_msg',
-  //  { channel_id: room_name, msg: 'emote', data: `is now known as ${name}`, broadcast: true });
+  return this.client.send('login', login_credentials, (err) => {
+    this.logging_in = false;
+    if (!err) {
+      this.logged_in_username = login_credentials.name;
+      this.logged_in = true;
+      this.was_logged_in = true;
+      if (this.on_login) {
+        this.on_login(login_credentials.name);
+      }
+    }
+    resp_func(err);
+  });
+};
+
+SubscriptionManager.prototype.login = function (username, password, resp_func) {
   if (password && password.split('$$')[0] === 'prehashed') {
     password = password.split('$$')[1];
   } else if (password) {
@@ -242,17 +279,8 @@ SubscriptionManager.prototype.login = function (username, password, resp_func) {
   } else {
     password = undefined;
   }
-  return this.client.send('login', { name: username, password: password }, (err) => {
-    this.logging_in = false;
-    if (!err) {
-      this.logged_in_username = username;
-      this.logged_in = true;
-      if (this.on_login) {
-        this.on_login(username);
-      }
-    }
-    resp_func(err);
-  });
+  this.login_credentials = { name: username, password: password };
+  this.loginInternal(this.login_credentials, resp_func);
 };
 
 SubscriptionManager.prototype.sendCmdParse = function (command, resp_func) {

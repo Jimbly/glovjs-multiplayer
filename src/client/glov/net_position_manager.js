@@ -90,7 +90,7 @@ NetPositionManager.prototype.onStateUpdate = function (cb) {
 };
 
 NetPositionManager.prototype.checkNet = function (on_pos_set_cb) {
-  if (!net.client.connected || !this.channel.data.public) {
+  if (!net.client.connected || !this.channel || !this.channel.data.public) {
     // Not yet in room, do nothing
     return true;
   }
@@ -148,6 +148,9 @@ NetPositionManager.prototype.updateMyPos = function (character_pos, anim_state) 
           state: this.last_send.anim_state, speed: this.last_send.speed,
           q: true,
         }, false, () => {
+          // could avoid needing this response function (and ack packet) if we
+          // instead just watch for the apply_channel_data message containing
+          // (approximately) what we sent
           this.last_send.sending = false;
           const end = glov_engine.getFrameTimestamp();
           if (end - this.last_send.time > this.send_time) {

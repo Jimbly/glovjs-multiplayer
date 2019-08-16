@@ -74,6 +74,7 @@ WSClient.prototype.onClose = function () {
   delete ws_server.clients[client.id];
   console.log(`WS Client ${client.id} disconnected` +
     ` (${Object.keys(ws_server.clients).length} clients connected)`);
+  ack.failAll(client); // Should this be before or after other disconnect events?
   client.emit('disconnect');
   ws_server.emit('disconnect', client);
 };

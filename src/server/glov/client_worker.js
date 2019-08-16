@@ -9,10 +9,14 @@ class ClientWorker extends ChannelWorker {
     super(channel_server, channel_id);
     this.client_id = this.channel_subid; // 1234
     this.client = null; // WSClient filled in by channel_server
+    this.ids = {
+      user_id: undefined,
+      display_name: channel_id,
+    };
   }
 
   onApplyChannelData(source, data) {
-    if (!this.ids || !this.ids.user_id) {
+    if (!this.ids.user_id) {
       // not logged in yet
       return;
     }
@@ -38,6 +42,11 @@ class ClientWorker extends ChannelWorker {
       msg: msg,
       data: data,
     }, resp_func);
+  }
+
+  onError(msg) {
+    console.error(`ClientWorker(${this.channel_id}) error:`, msg);
+    this.client.send('error', msg);
   }
 }
 

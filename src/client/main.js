@@ -168,7 +168,7 @@ export function main() {
     }
 
     // Network send
-    pos_manager.updateMyPos([test.character.x, test.character.y], 'idle');
+    pos_manager.updateMyPos(vec2(test.character.x, test.character.y), 'idle');
   }
 
   test = function (dt) {
@@ -195,41 +195,43 @@ export function main() {
       test.character = { x: 0, y: 0 };
     }
 
-    playerMotion(dt);
+    if (test_room) {
+      playerMotion(dt);
 
-    sprites.game_bg.draw({
-      x: 0, y: 0, z: Z.BACKGROUND,
-      color: [0.5, 0.6, 0.7, 1],
-      shader: test_shader,
-      shader_params: {
-        params: [1.0, 1.0, 1.0, engine.getFrameTimestamp() * 0.0005 % 1000],
-      },
-    });
+      sprites.game_bg.draw({
+        x: 0, y: 0, z: Z.BACKGROUND,
+        color: [0.5, 0.6, 0.7, 1],
+        shader: test_shader,
+        shader_params: {
+          params: [1.0, 1.0, 1.0, engine.getFrameTimestamp() * 0.0005 % 1000],
+        },
+      });
 
-    sprites.test_tint.drawDualTint({
-      x: test.character.x,
-      y: test.character.y,
-      z: Z.SPRITES,
-      color: [1, 1, 0, 1],
-      color1: [1, 0, 1, 1],
-      size: [sprite_size, sprite_size],
-      frame: sprites.animation.getFrame(dt),
-    });
+      sprites.test_tint.drawDualTint({
+        x: test.character.x,
+        y: test.character.y,
+        z: Z.SPRITES,
+        color: [1, 1, 0, 1],
+        color1: [1, 0, 1, 1],
+        size: [sprite_size, sprite_size],
+        frame: sprites.animation.getFrame(dt),
+      });
 
-    // Draw other users
-    let room_clients = test_room.getChannelData('public.clients', {});
-    for (let client_id in room_clients) {
-      let other_client = room_clients[client_id];
-      if (other_client.pos && other_client.ids) {
-        let pos = pos_manager.updateOtherClient(client_id, dt);
-        sprites.test.draw({
-          x: pos[0], y: pos[1], z: Z.SPRITES - 1,
-          color: color_gray,
-        });
-        ui.font.drawSizedAligned(glov_font.styleColored(null, 0x00000080),
-          pos[0], pos[1] - 64, Z.SPRITES - 1,
-          ui.font_height, glov_font.ALIGN.HCENTER, 0, 0,
-          other_client.ids.display_name || `client_${client_id}`);
+      // Draw other users
+      let room_clients = test_room.getChannelData('public.clients', {});
+      for (let client_id in room_clients) {
+        let other_client = room_clients[client_id];
+        if (other_client.pos && other_client.ids) {
+          let pos = pos_manager.updateOtherClient(client_id, dt);
+          sprites.test.draw({
+            x: pos[0], y: pos[1], z: Z.SPRITES - 1,
+            color: color_gray,
+          });
+          ui.font.drawSizedAligned(glov_font.styleColored(null, 0x00000080),
+            pos[0], pos[1] - 64, Z.SPRITES - 1,
+            ui.font_height, glov_font.ALIGN.HCENTER, 0, 0,
+            other_client.ids.display_name || `client_${client_id}`);
+        }
       }
     }
 
@@ -239,15 +241,17 @@ export function main() {
   function testInit(dt) {
     engine.setState(test);
 
-    test_room = net.subs.getChannel('test.test', true);
-    pos_manager.reinit({
-      channel: test_room,
-      default_pos: vec2(
-        (Math.random() * (game_width - sprite_size) + (sprite_size * 0.5)),
-        (Math.random() * (game_height - sprite_size) + (sprite_size * 0.5))
-      ),
+    net.subs.onLogin(function () {
+      test_room = net.subs.getChannel('test.test', true);
+      pos_manager.reinit({
+        channel: test_room,
+        default_pos: vec2(
+          (Math.random() * (game_width - sprite_size) + (sprite_size * 0.5)),
+          (Math.random() * (game_height - sprite_size) + (sprite_size * 0.5))
+        ),
+      });
+      app.chat_ui.setChannel(test_room);
     });
-    app.chat_ui.setChannel(test_room);
 
     test(dt);
   }

@@ -8,19 +8,9 @@ const { ChannelWorker } = require('./channel_worker.js');
 const client_comm = require('./client_comm.js');
 const default_workers = require('./default_workers.js');
 const exchange = require('./exchange.js');
+const { logdata } = require('../../common/util.js');
 
 const { max } = Math;
-
-export function logdata(data) {
-  if (data === undefined) {
-    return '';
-  }
-  let r = JSON.stringify(data);
-  if (r.length < 80) {
-    return r;
-  }
-  return `${r.slice(0, 77)}...`;
-}
 
 function defaultRespFunc(err) {
   if (err) {
@@ -47,7 +37,7 @@ export function channelServerSend(source, dest, msg, err, data, resp_func) {
       processes (logic here from other project).
   */
   assert(source.channel_id);
-  if (!data || !data.q) {
+  if ((!data || !data.q) && typeof msg === 'string') {
     console.log(`${source.channel_id}->${dest}: ${msg} ${err ? `err:${logdata(err)}` : ''} ${logdata(data)}`);
   }
 
@@ -152,6 +142,8 @@ class ChannelServer {
     this.tick_time = 250;
     this.last_tick_timestamp = Date.now();
     this.server_time = 0;
+    this.last_server_time_send = 0;
+    this.server_time_send_interval = 5000;
     setTimeout(this.tick_func, this.tick_time);
   }
 
@@ -160,12 +152,17 @@ class ChannelServer {
     let now = Date.now();
     let dt = max(0, now - this.last_tick_timestamp);
     this.last_tick_timestamp = now;
+    let stall = false;
     if (dt > this.tick_time * 2) {
       // large stall, discard extra time
       dt = this.tick_time;
+      stall = true;
     }
     this.server_time += dt;
-    this.ws_server.broadcast('server_time', this.server_time);
+    if (stall || this.server_time > this.last_server_time_send + this.server_time_send_interval) {
+      this.ws_server.broadcast('server_time', this.server_time);
+      this.last_server_time_send = this.server_time;
+    }
     for (let channel_id in this.local_channels) {
       let channel = this.local_channels[channel_id];
       if (channel.tick) {

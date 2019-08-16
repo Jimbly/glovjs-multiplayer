@@ -24,6 +24,16 @@ export function wrapMessage(receiver, msg, err, data, resp_func) {
   return net_data;
 }
 
+export function failAll(receiver, err) {
+  err = err || 'ERR_DISCONNECTED';
+  let cbs = receiver.resp_cbs;
+  receiver.resp_cbs = {};
+  receiver.responses_waiting = 0;
+  for (let pak_id in cbs) {
+    cbs[pak_id](err);
+  }
+}
+
 // `source` is a string for debug/logging only
 // `receiver` needs initReceicver called on it, have .onError() in the prototype and optionally .log()
 // sendFunc(msg, err, data, resp_func)

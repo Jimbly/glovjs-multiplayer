@@ -2,7 +2,9 @@
 // Released under MIT License: https://opensource.org/licenses/MIT
 
 const ack = require('./ack.js');
+const { logdata } = require('./util.js');
 
+export const LOG_MESSAGES = false;
 export const CONNECTION_TIMEOUT = 60000;
 export const PING_TIME = CONNECTION_TIMEOUT / 2;
 
@@ -30,6 +32,16 @@ export function handleMessage(client, net_data) {
     return client.onError(e);
   }
   client.last_receive_time = now;
+
+  if (LOG_MESSAGES) {
+    console.log(`wscommon.receive ${
+      net_data.err ?
+        `err:${net_data.err}` :
+        typeof net_data.msg==='number' ?
+          `ack(${net_data.msg})` :
+          net_data.msg
+    }${net_data.pak_id ? `(${net_data.pak_id})` : ''} ${logdata(net_data.data)}`);
+  }
 
   return ack.handleMessage(client, source, net_data, function sendFunc(msg, err, data, resp_func) {
     sendMessageInternal(client, msg, err, data, resp_func);

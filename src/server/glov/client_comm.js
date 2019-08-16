@@ -3,7 +3,8 @@
 
 const assert = require('assert');
 const client_worker = require('./client_worker.js');
-const { channelServerSend, logdata } = require('./channel_server.js');
+const { channelServerSend } = require('./channel_server.js');
+const { logdata } = require('../../common/util.js');
 
 // Messages not allowed to be forwarded from client to arbitrary worker
 const RESERVED = {
@@ -99,7 +100,6 @@ function onLogin(channel_server, client, data, resp_func) {
     password: data.password,
   }, function (err, resp_data) {
     if (!err) {
-      client_channel.ids = client_channel.ids || {};
       client_channel.ids.user_id = data.name;
       client.ids.user_id = data.name;
       client_channel.ids.display_name = resp_data.display_name;
