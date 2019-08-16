@@ -35,15 +35,17 @@ export function handleMessage(client, net_data) {
 
   if (LOG_MESSAGES) {
     console.log(`wscommon.receive ${
-      net_data.err ?
-        `err:${net_data.err}` :
-        typeof net_data.msg==='number' ?
-          `ack(${net_data.msg})` :
-          net_data.msg
-    }${net_data.pak_id ? `(${net_data.pak_id})` : ''} ${logdata(net_data.data)}`);
+      typeof net_data.msg==='number' ?
+        `ack(${net_data.msg})` :
+        net_data.msg
+    }${net_data.pak_id ? `(${net_data.pak_id})` : ''}${
+      net_data.err ? ` err:${net_data.err}` : ''} ${logdata(net_data.data)}`);
   }
 
   return ack.handleMessage(client, source, net_data, function sendFunc(msg, err, data, resp_func) {
+    if (resp_func && !resp_func.expecting_response) {
+      resp_func = null;
+    }
     sendMessageInternal(client, msg, err, data, resp_func);
   }, function handleFunc(msg, data, resp_func) {
     let handler = client.handlers[msg];
