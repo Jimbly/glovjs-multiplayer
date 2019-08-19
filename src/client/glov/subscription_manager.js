@@ -100,7 +100,6 @@ ClientChannelWorker.prototype.send = function (msg, data, opts, resp_func) {
 function SubscriptionManager(client) {
   EventEmitter.call(this);
   this.client = client;
-  this.on_login = null;
   this.channels = {};
 
   this.first_connect = true;
@@ -176,7 +175,6 @@ SubscriptionManager.prototype.handleChannelMessage = function (data, resp_func) 
 SubscriptionManager.prototype.handleServerTime = function (data) {
   this.server_time = data;
   if (this.server_time < this.server_time_interp && this.server_time > this.server_time_interp - 250) {
-    /*jshint noempty:false*/
     // slight time travel backwards, this one packet must have been delayed,
     // since we once got a packet quicker. Just ignore this, interpolate from
     // where we were before
@@ -244,8 +242,7 @@ SubscriptionManager.prototype.unsubscribe = function (channel_id) {
 };
 
 SubscriptionManager.prototype.onLogin = function (cb) {
-  assert(!this.on_login);
-  this.on_login = cb;
+  this.on('login', cb);
   if (this.logged_in) {
     return void cb();
   }
@@ -267,9 +264,9 @@ SubscriptionManager.prototype.loginInternal = function (login_credentials, resp_
       this.logged_in_username = login_credentials.name;
       this.logged_in = true;
       this.was_logged_in = true;
-      if (this.on_login) {
-        this.on_login(login_credentials.name);
-      }
+      this.emit('login', login_credentials.name);
+    } else {
+      this.emit('login_fail', err);
     }
     resp_func(err);
   });
