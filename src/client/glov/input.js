@@ -58,7 +58,7 @@ export let KEYS = {
 if (typeof Proxy === 'function') {
   // Catch referencing keys that are not in our map
   KEYS = new Proxy(KEYS, {
-    get: function (target, prop, receiver) {
+    get: function (target, prop) {
       let ret = target[prop];
       assert(ret);
       return ret;

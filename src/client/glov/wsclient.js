@@ -15,7 +15,7 @@ export function WSClient() {
   this.disconnected = false;
   this.retry_scheduled = false;
   this.retry_count = 0;
-  this.disconnect_time = 0;
+  this.disconnect_time = Date.now();
   this.last_receive_time = Date.now();
   this.last_send_time = Date.now();
   ack.initReceiver(this);
@@ -120,9 +120,9 @@ WSClient.prototype.connect = function (for_reconnect) {
     client.socket = null;
     if (client.connected) {
       client.disconnect_time = Date.now();
+      client.disconnected = true;
     }
     client.connected = false;
-    client.disconnected = true;
     if (!skip_close) {
       try {
         socket.close();

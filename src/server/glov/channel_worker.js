@@ -20,10 +20,10 @@ export class ChannelWorker {
     };
     this.subscribers = []; // ids of who is subscribed to us
     this.store_path = `${this.channel_type}/${this.channel_id}`;
+    this.bulk_store_path = `bulk/${this.channel_type}/${this.channel_id}`;
     this.data = channel_server.ds_store.get(this.store_path, '', {});
     this.data.public = this.data.public || {};
     this.data.private = this.data.private || {};
-    this.data.channel_id = channel_id;
     this.subscribe_counts = {}; // refcount of subscriptions to other channels
     this.is_channel_worker = true; // TODO: Remove this?
     this.adding_client = null; // The client we're in the middle of adding, don't send them state updates yet
@@ -80,6 +80,7 @@ export class ChannelWorker {
 
     this.adding_client = null;
 
+    // 'channel_data' is really an ack for 'subscribe' - sent exactly once
     this.sendChannelMessage(channel_id, 'channel_data', {
       public: this.data.public,
     });
@@ -243,7 +244,7 @@ export class ChannelWorker {
     }
   }
 
-  onSetIfChannelData(source, data, resp_func) {
+  onSetChannelDataIf(source, data, resp_func) {
     if (source.type === 'client') {
       // deny
       return resp_func('ERR_NOT_ALLOWED');
@@ -256,6 +257,48 @@ export class ChannelWorker {
     return resp_func();
   }
 
+  onSetChannelDataPush(source, data, resp_func) {
+    let { key, value } = data;
+    assert(typeof key === 'string');
+    assert(typeof source === 'object');
+    if (this.handleSetChannelData ?
+      !this.handleSetChannelData(source, key, value) :
+      !this.defaultHandleSetChannelData(source, key, value)
+    ) {
+      // denied by app_worker
+      console.log(' - failed handleSetChannelData() check');
+      return resp_func('ERR_APP_WORKER');
+    }
+    assert(value);
+    let arr = dot_prop.get(this.data, key);
+    let need_create = !arr;
+    if (need_create) {
+      arr = [];
+    }
+    if (!Array.isArray(arr)) {
+      return resp_func('ERR_NOT_ARRAY');
+    }
+
+    let idx = arr.push(value) - 1;
+    if (need_create) {
+      dot_prop.set(this.data, key, arr);
+    } else {
+      // array was modified in-place
+    }
+    // only send public changes
+    if (key.startsWith('public')) {
+      let mod_data;
+      if (need_create) {
+        mod_data = { key, value: arr };
+      } else {
+        mod_data = { key: `${key}.${idx}`, value };
+      }
+      this.channelEmit('apply_channel_data', mod_data, this.adding_client);
+    }
+    this.channel_server.ds_store.set(this.store_path, '', this.data);
+    return resp_func();
+  }
+
   onSetChannelData(source, data) {
     this.setChannelDataInternal(source, data.key, data.value, data.q);
   }
@@ -264,10 +307,12 @@ export class ChannelWorker {
   }
 
   onGetChannelData(source, data, resp_func) {
-    if (source.type === 'client') {
-      // deny
-      return resp_func('ERR_NOT_ALLOWED');
-    }
+    // Do not deny this here, this is handled by RESERVED in client_comm.js
+    // We want the client_comm functions to send this message if needed.
+    // if (source.type === 'client') {
+    //   // deny
+    //   return resp_func('ERR_NOT_ALLOWED');
+    // }
     return resp_func(null, this.getChannelData(data));
   }
 
@@ -316,8 +361,17 @@ export class ChannelWorker {
     }
     this.channel_server.ds_store.set(this.store_path, '', this.data);
   }
-  getChannelData(key, default_vaulue) {
-    return dot_prop.get(this.data, key, default_vaulue);
+  getChannelData(key, default_value) {
+    return dot_prop.get(this.data, key, default_value);
+  }
+
+  getBulkChannelData(obj_name, key, default_value, cb) {
+    let bulk_obj_name = `${this.bulk_store_path}/${obj_name}`;
+    this.channel_server.ds_store.getAsync(bulk_obj_name, key, default_value, cb);
+  }
+  setBulkChannelData(obj_name, key, value, cb) {
+    let bulk_obj_name = `${this.bulk_store_path}/${obj_name}`;
+    this.channel_server.ds_store.setAsync(bulk_obj_name, key, value, cb);
   }
 
   sendChannelMessage(dest, msg, data, resp_func) {

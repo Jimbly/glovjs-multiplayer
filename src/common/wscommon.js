@@ -11,6 +11,10 @@ export const PING_TIME = CONNECTION_TIMEOUT / 2;
 function sendMessageInternal(client, msg, err, data, resp_func) {
   if (!client.connected || client.socket.readyState !== 1) { // WebSocket.OPEN
     (client.log ? client : console).log('Attempting to send on a disconnected link, ignoring', { msg, err, data });
+    if (!client.log && client.onError && msg && typeof msg !== 'number') {
+      // On the client, if we try to send a new packet while disconnected, this is an application error
+      client.onError(`Attempting to send msg=${msg} on a disconnected link`);
+    }
   } else {
     let net_data = ack.wrapMessage(client, msg, err, data, resp_func);
     client.socket.send(JSON.stringify(net_data));
@@ -50,6 +54,7 @@ export function handleMessage(client, net_data) {
   }, function handleFunc(msg, data, resp_func) {
     let handler = client.handlers[msg];
     if (!handler) {
+      console.log(`${source} Error: no handler for message ${JSON.stringify(msg)}`);
       return resp_func(`No handler for message ${JSON.stringify(msg)} from ${source}`);
     }
     return handler(client, data, resp_func);

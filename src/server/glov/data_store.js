@@ -26,6 +26,17 @@ class DataStoreOneFile {
     }
     return dot_prop.get(obj, key, default_value);
   }
+  setAsync(obj_name, key, value, cb) {
+    setImmediate(() => {
+      this.set(obj_name, key, value);
+      cb();
+    });
+  }
+  getAsync(obj_name, key, default_value, cb) {
+    setImmediate(() => {
+      cb(null, this.get(obj_name, key, default_value));
+    });
+  }
 }
 
 class DataStore {
@@ -68,6 +79,18 @@ class DataStore {
       return obj;
     }
     return dot_prop.get(obj, key, default_value);
+  }
+
+  setAsync(obj_name, key, value, cb) {
+    setImmediate(() => {
+      this.set(obj_name, key, value);
+      cb();
+    });
+  }
+  getAsync(obj_name, key, default_value, cb) {
+    setImmediate(() => {
+      cb(null, this.get(obj_name, key, default_value));
+    });
   }
 }
 

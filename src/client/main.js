@@ -170,19 +170,33 @@ export function main() {
     pos_manager.updateMyPos(vec2(test.character.x, test.character.y), 'idle');
   }
 
+  function preLogout() {
+    if (test_room && test_room.subscriptions) {
+      net.subs.unsubscribe(test_room.channel_id);
+    }
+  }
+
   test = function (dt) {
     // Allow focusing the canvas, and before chat.
     ui.focusCheck('canvas');
 
     app.chat_ui.run(dt);
-    app.account_ui.showLogin();
+    app.account_ui.showLogin({
+      x: 0, y: 0,
+      prelogout: preLogout, center: false,
+      style: glov_font.style(null, {
+        outline_width: 2,
+        outline_color: 0xFFFFFFff,
+        color: 0x000000ff,
+      }),
+    });
 
     if (!test.color_sprite) {
       test.color_sprite = v4copy(vec4(), color_white);
       test.character = { x: 0, y: 0 };
     }
 
-    if (test_room) {
+    if (test_room && test_room.subscriptions) {
       playerMotion(dt);
 
       sprites.game_bg.draw({

@@ -18,7 +18,7 @@ class DefaultUserWorker extends ChannelWorker {
   }
   handleLogin(src, data, resp_func) {
     if (!data.password) {
-      return resp_func('missing password');
+      return resp_func('Missing password');
     }
 
     if (!this.getChannelData('private.password')) {
@@ -26,7 +26,7 @@ class DefaultUserWorker extends ChannelWorker {
       this.setChannelData('public.display_name', this.user_id);
     }
     if (this.getChannelData('private.password') !== data.password) {
-      return resp_func('invalid password');
+      return resp_func('Invalid password');
     }
     return resp_func(null, {
       display_name: this.getChannelData('public.display_name'),

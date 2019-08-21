@@ -206,8 +206,11 @@ class ChannelServer {
       addUnique(handlers, 'unsubscribe', ChannelWorker.prototype.onUnSubscribe);
       addUnique(handlers, 'client_changed', ChannelWorker.prototype.onClientChanged);
       addUnique(handlers, 'set_channel_data', ChannelWorker.prototype.onSetChannelData);
-      addUnique(handlers, 'setif_channel_data', ChannelWorker.prototype.onSetIfChannelData);
+      addUnique(handlers, 'set_channel_data_if', ChannelWorker.prototype.onSetChannelDataIf);
+      addUnique(handlers, 'set_channel_data_push', ChannelWorker.prototype.onSetChannelDataPush);
       addUnique(handlers, 'get_channel_data', ChannelWorker.prototype.onGetChannelData);
+      // Note: If adding something here, probably want to add it to RESERVED in client_comm.js too
+
       addUnique(handlers, 'broadcast', ChannelWorker.prototype.onBroadcast);
       addUnique(handlers, 'cmdparse', ChannelWorker.prototype.onCmdParse);
     }

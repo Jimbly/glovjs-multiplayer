@@ -21,9 +21,6 @@ function ClientChannelWorker(subs, channel_id) {
   this.data = {};
   this.onMsg('channel_data', this.handleChannelData.bind(this));
   this.onMsg('apply_channel_data', this.handleApplyChannelData.bind(this));
-  this.logged_in = false;
-  this.was_logged_in = false;
-  this.logging_in = false;
 }
 util.inherits(ClientChannelWorker, EventEmitter);
 
@@ -101,6 +98,12 @@ function SubscriptionManager(client) {
   EventEmitter.call(this);
   this.client = client;
   this.channels = {};
+  this.logged_in = false;
+  this.login_credentials = null;
+  this.logged_in_username = null;
+  this.was_logged_in = false;
+  this.logging_in = false;
+  this.logging_out = false;
 
   this.first_connect = true;
   this.connected = false;
@@ -283,6 +286,29 @@ SubscriptionManager.prototype.login = function (username, password, resp_func) {
   }
   this.login_credentials = { name: username, password: password };
   this.loginInternal(this.login_credentials, resp_func);
+};
+
+SubscriptionManager.prototype.logout = function () {
+  assert(this.logged_in);
+  assert(!this.logging_in);
+  assert(!this.logging_out);
+  // Don't know how to gracefully handle logging out with subscriptions currently, assert we have none
+  for (let channel_id in this.channels) {
+    let channel = this.channels[channel_id];
+    assert(!channel.subscriptions);
+  }
+
+  this.logging_out = true;
+  this.client.send('logout', null, (err) => {
+    this.logging_out = false;
+    if (!err) {
+      local_storage.set('password', undefined);
+      this.logged_in = false;
+      this.logged_in_username = null;
+      this.was_logged_in = false;
+      this.login_credentials = null;
+    }
+  });
 };
 
 SubscriptionManager.prototype.sendCmdParse = function (command, resp_func) {

@@ -10,22 +10,23 @@ const { logdata } = require('../../common/util.js');
 const RESERVED = {
   'subscribe': 1, 'unsubscribe': 1,
   'client_changed': 1,
-  'apply_channel_data': 1, 'set_channel_data': 1,
+  'apply_channel_data': 1, 'set_channel_data': 1, 'set_channel_data_if': 1,
+  'set_channel_data_push': 1,
 };
 
-function onUnSubscribe(channel_server, client, channel_id) {
+function onUnSubscribe(client, channel_id) {
   client.client_channel.unsubscribeOther(channel_id);
 }
 
-function onClientDisconnect(channel_server, client) {
+function onClientDisconnect(client) {
   client.client_channel.unsubscribeAll();
 }
 
-function onSubscribe(channel_server, client, channel_id) {
+function onSubscribe(client, channel_id) {
   client.client_channel.subscribeOther(channel_id);
 }
 
-function onSetChannelData(channel_server, client, data, resp_func) {
+function onSetChannelData(client, data, resp_func) {
   data.key = String(data.key);
   let channel_id = data.channel_id;
   assert(channel_id);
@@ -48,8 +49,8 @@ function onSetChannelData(channel_server, client, data, resp_func) {
   resp_func();
 }
 
-function onChannelMsg(channel_server, client, data, resp_func) {
-  // Messages to everyone subscribed to the channel, e.g. chat
+function onChannelMsg(client, data, resp_func) {
+  // Arbitrary messages, or messages to everyone subscribed to the channel, e.g. chat
   console.log(`client_id:${client.id}->${data.channel_id}: channel_msg ${logdata(data)}`);
   if (RESERVED[data.msg]) {
     return void resp_func(`Not allowed to send internal message ${data.msg}`);
@@ -76,7 +77,7 @@ function onChannelMsg(channel_server, client, data, resp_func) {
 }
 
 const regex_valid_username = /^[a-zA-Z0-9_]+$/u;
-function onLogin(channel_server, client, data, resp_func) {
+function onLogin(client, data, resp_func) {
   console.log(`client_id:${client.id}->server login ${logdata(data)}`);
   if (!data.name) {
     return resp_func('invalid username');
@@ -108,10 +109,33 @@ function onLogin(channel_server, client, data, resp_func) {
       }
 
       // Always subscribe client to own user
-      onSubscribe(channel_server, client, `user.${data.name}`);
+      onSubscribe(client, `user.${data.name}`);
     }
     resp_func(err);
   });
+}
+
+function onLogOut(client, data, resp_func) {
+  let { user_id } = client.ids;
+  console.log(`client_id:${client.id}->server logout ${user_id}`);
+  if (!user_id) {
+    return resp_func('ERR_NOT_LOGGED_IN');
+  }
+  let client_channel = client.client_channel;
+  assert(client_channel);
+
+  onUnSubscribe(client, `user.${user_id}`);
+  delete client_channel.ids.user_id;
+  delete client_channel.ids.display_name;
+  delete client.ids.user_id;
+  delete client.ids.display_name;
+
+  // Tell channels we have a new user id/display name
+  for (let channel_id in client_channel.subscribe_counts) {
+    channelServerSend(client_channel, channel_id, 'client_changed');
+  }
+
+  return resp_func();
 }
 
 export function init(channel_server) {
@@ -129,12 +153,13 @@ export function init(channel_server) {
     client.client_channel.client = client;
     client.ids.channel_id = client.client_channel.channel_id;
   });
-  ws_server.on('disconnect', onClientDisconnect.bind(null, channel_server));
-  ws_server.onMsg('subscribe', onSubscribe.bind(null, channel_server));
-  ws_server.onMsg('unsubscribe', onUnSubscribe.bind(null, channel_server));
-  ws_server.onMsg('set_channel_data', onSetChannelData.bind(null, channel_server));
-  ws_server.onMsg('channel_msg', onChannelMsg.bind(null, channel_server));
-  ws_server.onMsg('login', onLogin.bind(null, channel_server));
+  ws_server.on('disconnect', onClientDisconnect);
+  ws_server.onMsg('subscribe', onSubscribe);
+  ws_server.onMsg('unsubscribe', onUnSubscribe);
+  ws_server.onMsg('set_channel_data', onSetChannelData);
+  ws_server.onMsg('channel_msg', onChannelMsg);
+  ws_server.onMsg('login', onLogin);
+  ws_server.onMsg('logout', onLogOut);
 
   client_worker.init(channel_server);
 }

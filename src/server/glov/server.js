@@ -7,7 +7,7 @@ const glov_channel_server = require('./channel_server.js');
 const glov_wsserver = require('./wsserver.js');
 
 let ds_store;
-let ws_server;
+export let ws_server;
 export let channel_server;
 
 export function startup(params) {
