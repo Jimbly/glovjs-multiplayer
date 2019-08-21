@@ -1,3 +1,5 @@
+// Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
+// Released under MIT License: https://opensource.org/licenses/MIT
 const camera2d = require('./glov/camera2d.js');
 const glov_font = require('./glov/font.js');
 const input = require('./glov/input.js');

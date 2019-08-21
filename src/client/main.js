@@ -6,6 +6,7 @@ const glov_font = require('./glov/font.js');
 const fs = require('fs');
 const input = require('./glov/input.js');
 const local_storage = require('./glov/local_storage.js');
+const { atan2, random } = Math;
 const net = require('./glov/net.js');
 const net_position_manager = require('./glov/net_position_manager.js');
 const particles = require('./glov/particles.js');
@@ -15,7 +16,7 @@ const sprite_animation = require('./glov/sprite_animation.js');
 const ui = require('./glov/ui.js');
 
 const particle_data = require('./particle_data.js');
-const { vec2, vec4, v4copy } = require('./glov/vmath.js');
+const { vec2, v2sub, vec4, v4copy } = require('./glov/vmath.js');
 local_storage.storage_prefix = 'glovjs-multiplayer';
 
 window.Z = window.Z || {};
@@ -29,7 +30,7 @@ Z.CHAT = 500;
 let app = exports;
 window.app = app; // for debugging
 
-const pos_manager = net_position_manager.create();
+const pos_manager = net_position_manager.create({ n: 3, dim_pos: 2, dim_rot: 1 });
 
 // Virtual viewport for our game logic
 export const game_width = 1280;
@@ -118,6 +119,7 @@ export function main() {
     if (pos_manager.checkNet((pos) => {
       test.character.x = pos[0];
       test.character.y = pos[1];
+      test.character.rot = pos[2];
     })) {
       return;
     }
@@ -166,8 +168,11 @@ export function main() {
       test.color_sprite[3] = 1;
     }
 
+    let aim = v2sub(vec2(), input.mousePos(), [test.character.x, test.character.y]);
+    test.character.rot = atan2(aim[0], -aim[1]);
+
     // Network send
-    pos_manager.updateMyPos(vec2(test.character.x, test.character.y), 'idle');
+    pos_manager.updateMyPos(new Float64Array([test.character.x, test.character.y, test.character.rot]), 'idle');
   }
 
   function preLogout() {
@@ -193,7 +198,7 @@ export function main() {
 
     if (!test.color_sprite) {
       test.color_sprite = v4copy(vec4(), color_white);
-      test.character = { x: 0, y: 0 };
+      test.character = { x: 0, y: 0, rot: 0 };
     }
 
     if (test_room && test_room.subscriptions) {
@@ -212,6 +217,7 @@ export function main() {
         x: test.character.x,
         y: test.character.y,
         z: Z.SPRITES,
+        rot: test.character.rot,
         color: [1, 1, 0, 1],
         color1: [1, 0, 1, 1],
         size: [sprite_size, sprite_size],
@@ -226,6 +232,7 @@ export function main() {
           let pos = pos_manager.updateOtherClient(client_id, dt);
           sprites.test.draw({
             x: pos[0], y: pos[1], z: Z.SPRITES - 1,
+            rot: pos[2],
             color: color_gray,
           });
           ui.font.drawSizedAligned(glov_font.styleColored(null, 0x00000080),
@@ -247,8 +254,8 @@ export function main() {
       pos_manager.reinit({
         channel: test_room,
         default_pos: vec2(
-          (Math.random() * (game_width - sprite_size) + (sprite_size * 0.5)),
-          (Math.random() * (game_height - sprite_size) + (sprite_size * 0.5))
+          (random() * (game_width - sprite_size) + (sprite_size * 0.5)),
+          (random() * (game_height - sprite_size) + (sprite_size * 0.5))
         ),
       });
       app.chat_ui.setChannel(test_room);

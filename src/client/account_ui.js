@@ -1,5 +1,5 @@
-// Based on version from glovjs-multiplayer, but will change greatly, so
-// probably not worth trying to keep it in sync.
+// Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
+// Released under MIT License: https://opensource.org/licenses/MIT
 const local_storage = require('./glov/local_storage.js');
 const glov_font = require('./glov/font.js');
 const net = require('./glov/net.js');
