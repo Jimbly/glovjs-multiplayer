@@ -16,7 +16,7 @@ const sprite_animation = require('./glov/sprite_animation.js');
 const ui = require('./glov/ui.js');
 
 const particle_data = require('./particle_data.js');
-const { vec2, v2sub, vec4, v4copy } = require('./glov/vmath.js');
+const { vec2, vec3, v2sub, vec4, v4copy } = require('./glov/vmath.js');
 local_storage.storage_prefix = 'glovjs-multiplayer';
 
 window.Z = window.Z || {};
@@ -229,16 +229,19 @@ export function main() {
       for (let client_id in room_clients) {
         let other_client = room_clients[client_id];
         if (other_client.pos && other_client.ids) {
-          let pos = pos_manager.updateOtherClient(client_id, dt);
-          sprites.test.draw({
-            x: pos[0], y: pos[1], z: Z.SPRITES - 1,
-            rot: pos[2],
-            color: color_gray,
-          });
-          ui.font.drawSizedAligned(glov_font.styleColored(null, 0x00000080),
-            pos[0], pos[1] - 64, Z.SPRITES - 1,
-            ui.font_height, glov_font.ALIGN.HCENTER, 0, 0,
-            other_client.ids.display_name || `client_${client_id}`);
+          let pcd = pos_manager.updateOtherClient(client_id, dt);
+          if (pcd) {
+            let pos = pcd.pos;
+            sprites.test.draw({
+              x: pos[0], y: pos[1], z: Z.SPRITES - 1,
+              rot: pos[2],
+              color: color_gray,
+            });
+            ui.font.drawSizedAligned(glov_font.styleColored(null, 0x00000080),
+              pos[0], pos[1] - 64, Z.SPRITES - 1,
+              ui.font_height, glov_font.ALIGN.HCENTER, 0, 0,
+              other_client.ids.display_name || `client_${client_id}`);
+          }
         }
       }
     }
@@ -253,9 +256,10 @@ export function main() {
       test_room = net.subs.getChannel('test.test', true);
       pos_manager.reinit({
         channel: test_room,
-        default_pos: vec2(
+        default_pos: vec3(
           (random() * (game_width - sprite_size) + (sprite_size * 0.5)),
-          (random() * (game_height - sprite_size) + (sprite_size * 0.5))
+          (random() * (game_height - sprite_size) + (sprite_size * 0.5)),
+          0
         ),
       });
       app.chat_ui.setChannel(test_room);
