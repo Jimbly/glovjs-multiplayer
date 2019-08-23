@@ -32,9 +32,15 @@ class ClientWorker extends ChannelWorker {
 
   onUnhandledMessage(source, msg, data, resp_func) {
     assert(this.client);
-    assert(this.client.connected);
     if (!resp_func.expecting_response) {
       resp_func = null;
+    }
+
+    if (!this.client.connected) {
+      if (resp_func) {
+        console.log(`ClientWorker(${this.channel_id}) received message for disconnected client:`, msg);
+        return void resp_func('ERR_CLIENT_DISCONNECTED');
+      }
     }
 
     this.client.send('channel_msg', {
