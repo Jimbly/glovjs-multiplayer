@@ -5,6 +5,7 @@
 const ack = require('../../common/ack.js');
 const assert = require('assert');
 const { min } = Math;
+const walltime = require('./walltime.js');
 const wscommon = require('../../common/wscommon.js');
 
 export function WSClient() {
@@ -40,7 +41,7 @@ export function WSClient() {
 
   this.connect(false);
 
-  this.onMsg('internal_client_id', this.onInternalClientID.bind(this));
+  this.onMsg('cack', this.onConnectAck.bind(this));
   this.onMsg('error', this.onError.bind(this));
 }
 
@@ -48,8 +49,9 @@ WSClient.prototype.timeSinceDisconnect = function () {
   return Date.now() - this.disconnect_time;
 };
 
-WSClient.prototype.onInternalClientID = function (data, resp_func) {
+WSClient.prototype.onConnectAck = function (data, resp_func) {
   let client = this;
+  walltime.sync(data.time);
   client.connected = true;
   client.disconnected = false;
   client.id = data.id;

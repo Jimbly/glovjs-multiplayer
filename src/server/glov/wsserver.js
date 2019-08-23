@@ -122,7 +122,11 @@ WSServer.prototype.init = function (server) {
     ws_server.emit('client', client);
 
     // after the .emit('client') has a chance to set client.ids
-    client.send('internal_client_id', { id: client.ids ? client.ids.id : client.id, secret: client.secret });
+    client.send('cack', {
+      id: client.ids ? client.ids.id : client.id,
+      secret: client.secret,
+      time: Date.now(),
+    });
 
     let query = querystring.parse(url.parse(req.url).query);
     let reconnect_id = Number(query.reconnect);
