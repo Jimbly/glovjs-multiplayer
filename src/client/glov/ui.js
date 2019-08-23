@@ -801,20 +801,9 @@ export function tickUI(dt) {
   modal_stealing_focus = false;
   touch_changed_focus = false;
 
-  for (let ii = 0; ii < last_frame_edit_boxes.length; ++ii) {
-    let edit_box = last_frame_edit_boxes[ii];
-    let idx = exports.this_frame_edit_boxes.indexOf(edit_box);
-    if (idx === -1) {
-      edit_box.unrun();
-    }
-  }
   last_frame_edit_boxes = exports.this_frame_edit_boxes;
   exports.this_frame_edit_boxes = [];
 
-  while (dom_elems_issued < dom_elems.length) {
-    let elem = dom_elems.pop();
-    dynamic_text_elem.removeChild(elem);
-  }
   dom_elems_issued = 0;
 
   if (modal_dialog || menu_up) {
@@ -853,6 +842,19 @@ export function endFrame() {
     w: Infinity, h: Infinity,
   })) {
     focusSteal('canvas');
+  }
+
+  for (let ii = 0; ii < last_frame_edit_boxes.length; ++ii) {
+    let edit_box = last_frame_edit_boxes[ii];
+    let idx = exports.this_frame_edit_boxes.indexOf(edit_box);
+    if (idx === -1) {
+      edit_box.unrun();
+    }
+  }
+
+  while (dom_elems_issued < dom_elems.length) {
+    let elem = dom_elems.pop();
+    dynamic_text_elem.removeChild(elem);
   }
 }
 
