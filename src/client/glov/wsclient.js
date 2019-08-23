@@ -170,7 +170,7 @@ WSClient.prototype.connect = function (for_reconnect) {
   }));
 
   let doPing = guard(function () {
-    if (Date.now() - client.last_send_time > wscommon.PING_TIME) {
+    if (Date.now() - client.last_send_time > wscommon.PING_TIME && client.connected) {
       client.send('ping');
     }
     setTimeout(doPing, wscommon.PING_TIME);
