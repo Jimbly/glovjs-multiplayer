@@ -159,6 +159,14 @@ NetPositionManager.prototype.onStateUpdate = function (cb) {
   this.on_state_update = cb;
 };
 
+function syncPosWithCaller(npm, on_pos_set_cb) {
+  npm.vcopy(npm.last_send.pos, npm.default_pos);
+  let new_pos = on_pos_set_cb(npm.last_send.pos);
+  if (new_pos) {
+    npm.vcopy(npm.last_send.pos, new_pos);
+  }
+}
+
 NetPositionManager.prototype.checkNet = function (on_pos_set_cb) {
   if (!net.client.connected || !this.channel || !this.channel.data.public) {
     // Not yet in room, do nothing
@@ -174,17 +182,15 @@ NetPositionManager.prototype.checkNet = function (on_pos_set_cb) {
     if (this.ever_received_character) {
       // we must be reconnecting, use last replicated position
     } else {
-      // fresh connect, use default position
-      this.vcopy(this.last_send.pos, this.default_pos);
-      on_pos_set_cb(this.last_send.pos);
+      // fresh connect, use default position, or ask for it from caller
+      syncPosWithCaller(this, on_pos_set_cb);
     }
     this.channel.setChannelData(`public.clients.${this.client_id}.pos`, {
       cur: this.arr(this.last_send.pos), // Do not send as Float64Array
     });
     this.ever_received_character = true;
   } else if (!this.ever_received_character) {
-    this.vcopy(this.last_send.pos, me.pos.cur);
-    on_pos_set_cb(this.last_send.pos);
+    syncPosWithCaller(this, on_pos_set_cb);
     this.ever_received_character = true;
   }
   return false;
@@ -293,7 +299,7 @@ NetPositionManager.prototype.updateOtherClient = function (client_id, dt) {
   const pcd = this.per_client_data[client_id];
   if (!pcd) {
     // Never got a position sent to us, ignore
-    return this.vec();
+    return null;
   }
 
   // Apply interpolation (logic from Splody)
@@ -328,7 +334,7 @@ NetPositionManager.prototype.updateOtherClient = function (client_id, dt) {
       this.on_state_update(client_id, pcd.net_state);
     }
   }
-  return pcd.pos;
+  return pcd;
 };
 NetPositionManager.prototype.n = 2; // dimensionality of position vectors
 NetPositionManager.prototype.dim_pos = 2; // number of components to be interpolated as-is
