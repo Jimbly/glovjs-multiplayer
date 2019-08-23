@@ -28,7 +28,7 @@ export function sendMessage(msg, data, resp_func) {
 
 export function handleMessage(client, net_data) {
   let now = Date.now();
-  let source = `client ${client.id}`;
+  let source = client.id ? `client ${client.id}` : 'server';
   try {
     net_data = JSON.parse(net_data);
   } catch (e) {
@@ -54,8 +54,12 @@ export function handleMessage(client, net_data) {
   }, function handleFunc(msg, data, resp_func) {
     let handler = client.handlers[msg];
     if (!handler) {
-      console.log(`${source} Error: no handler for message ${JSON.stringify(msg)}`);
-      return resp_func(`No handler for message ${JSON.stringify(msg)} from ${source}`);
+      let error_msg = `No handler for message ${JSON.stringify(msg)} from ${source}`;
+      console.log(error_msg, data);
+      if (client.onError) {
+        return client.onError(error_msg);
+      }
+      return resp_func(error_msg);
     }
     return handler(client, data, resp_func);
   });
