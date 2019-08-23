@@ -198,13 +198,13 @@ function onKeyDown(event) {
 
 let temp_delta = vec2();
 function onMouseMove(event, no_stop) {
-  if (touch_mode) {
-    local_storage.setJSON('touch_mode', false);
-    touch_mode = false;
-  }
   if (event.target.tagName !== 'INPUT' && !no_stop) {
     event.preventDefault();
     event.stopPropagation();
+    if (touch_mode) {
+      local_storage.setJSON('touch_mode', false);
+      touch_mode = false;
+    }
   }
   // offsetX/layerX return position relative to text-entry boxes, not good!
   mouse_pos[0] = event.clientX;
