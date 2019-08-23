@@ -134,7 +134,7 @@ export function pointerLocked() {
   return ptrlock.isLocked();
 }
 let pointerlock_touch_id = `m${POINTERLOCK}`;
-export function pointerLockEnter() {
+export function pointerLockEnter(maybe) {
   if (touch_mode) {
     return;
   }
@@ -148,7 +148,7 @@ export function pointerLockEnter() {
     touch_data.state = DOWN; // No DOWN_EDGE for this
   }
   movement_questionable_frames = MOVEMENT_QUESTIONABLE_FRAMES;
-  ptrlock.enter();
+  ptrlock.enter(maybe);
 }
 export function pointerLockExit() {
   let touch_data = touches[pointerlock_touch_id];
