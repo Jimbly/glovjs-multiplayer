@@ -813,7 +813,9 @@ export function mouseDownEdge(param) {
       continue;
     }
     if (checkPos(touch_data.cur_pos, pos_param)) {
-      touch_data.state = DOWN;
+      if (!param.peek) {
+        touch_data.state = DOWN;
+      }
       return {
         button: touch_data.button,
         pos: check_pos.slice(0),
