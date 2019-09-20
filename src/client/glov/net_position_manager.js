@@ -35,11 +35,18 @@ NetPositionManager.prototype.onChannelSubscribe = function (data) {
   this.client_id = net.client.id;
 };
 
-NetPositionManager.prototype.onChannelData = function (data, mod_key/* , mod_value */) {
+NetPositionManager.prototype.onChannelData = function (data, mod_key, mod_value) {
   if (mod_key) {
-    const m = mod_key.match(/public\.clients\.([^.]+)\.pos/u);
+    let m = mod_key.match(/^public\.clients\.([^.]+)\.pos$/u);
     if (m) {
       this.otherClientPosChanged(m[1]);
+    }
+    if (!mod_value) {
+      m = mod_key.match(/^public\.clients\.([^.]+)$/u);
+      if (m) {
+        // other client disconnected
+        delete this.per_client_data[m[1]];
+      }
     }
   } else {
     if (data && data.public && data.public.clients) {
@@ -133,6 +140,9 @@ NetPositionManager.prototype.reinit = function (options) {
   }
   if (!this.temp_vec) {
     this.temp_vec = this.vec();
+  }
+  if (!this.temp_delta) {
+    this.temp_delta = this.vec();
   }
 
   this.channel = options.channel; // Never inheriting this over reinit()
@@ -236,6 +246,14 @@ NetPositionManager.prototype.updateMyPos = function (character_pos, anim_state) 
   }
 };
 
+NetPositionManager.prototype.getPos = function (client_id) {
+  let pcd = this.per_client_data[client_id];
+  if (!pcd) {
+    return null;
+  }
+  return pcd.pos;
+};
+
 NetPositionManager.prototype.otherClientPosChanged = function (client_id) {
   const client_pos = this.channel.getChannelData(`public.clients.${client_id}.pos`);
   if (!client_pos || !client_pos.cur || typeof client_pos.cur[0] !== 'number') {
@@ -271,7 +289,7 @@ NetPositionManager.prototype.otherClientPosChanged = function (client_id) {
 
   // This interpolation logic taken from Splody
   // Doesn't do great with physics-based jumps though
-  const delta = this.vsub(this.vec(), pcd.net_pos, pcd.pos);
+  const delta = this.vsub(this.temp_delta, pcd.net_pos, pcd.pos);
   const dist = this.vlength(delta);
 
   if (dist > 0) {

@@ -39,7 +39,7 @@ export const game_height = 960;
 export let sprites = {};
 
 export function main() {
-  net.init(engine);
+  net.init({ engine });
 
   if (!engine.startup({
     game_width,

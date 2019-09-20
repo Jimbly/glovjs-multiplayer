@@ -5,6 +5,10 @@ const glov_font = require('./glov/font.js');
 const input = require('./glov/input.js');
 const net = require('./glov/net.js');
 const ui = require('./glov/ui.js');
+const { clamp } = require('../common/util.js');
+
+const FADE_START_TIME = 10000;
+const FADE_TIME = 1000;
 
 function ChatUI(cmd_parse) {
   this.cmd_parse = cmd_parse;
@@ -21,15 +25,23 @@ function ChatUI(cmd_parse) {
   this.msgs = [];
   this.max_messages = 6;
 
-  this.font_style = glov_font.style(null, {
-    color: 0xBBBBBBff,
-    outline_width: 1.0,
-    outline_color: 0x000000ff,
-  });
+  this.styles = {
+    def: glov_font.style(null, {
+      color: 0xBBBBBBff,
+      outline_width: 1.0,
+      outline_color: 0x000000ff,
+    }),
+    error: glov_font.style(null, {
+      color: 0xDD0000ff,
+      outline_width: 1.0,
+      outline_color: 0x000000ff,
+    }),
+  };
 }
 
-ChatUI.prototype.addChat = function (msg) {
-  this.msgs.push(msg);
+ChatUI.prototype.addChat = function (msg, style) {
+  this.msgs.push({ msg, style, timestamp: Date.now() });
+  console.log(msg);
 };
 ChatUI.prototype.onMsgJoin = function (data) {
   this.addChat(`${data.display_name} joined the channel`);
@@ -54,6 +66,24 @@ ChatUI.prototype.runLate = function () {
   }
 };
 
+ChatUI.prototype.cmdParse = function (str) {
+  let handleCmdParse = (err, resp) => {
+    if (err) {
+      this.addChat(`[error] ${err}`);
+    } else if (resp) {
+      this.addChat(`[system] ${(typeof resp === 'string') ? resp : JSON.stringify(resp)}`);
+    }
+  };
+  this.cmd_parse.handle(null, str, (err, resp) => {
+    if (err && this.cmd_parse.was_not_found) {
+      // forward to server
+      net.subs.sendCmdParse(str, handleCmdParse);
+    } else {
+      handleCmdParse(err, resp);
+    }
+  });
+};
+
 ChatUI.prototype.run = function (opts) {
   opts = opts || {};
   if (net.client.disconnected) {
@@ -76,31 +106,17 @@ ChatUI.prototype.run = function (opts) {
   let y0 = camera2d.y1();
   let y = y0;
   let w = (camera2d.x1() - camera2d.x0()) / 2;
+  let is_focused = false;
   if (net.subs.loggedIn() && !(ui.modal_dialog || ui.menu_up || opts.hide)) {
     y -= 40;
     let was_focused = this.edit_text_entry.isFocused();
     let res = this.edit_text_entry.run({ x, y, w });
-    let is_focused = this.edit_text_entry.isFocused();
+    is_focused = this.edit_text_entry.isFocused();
     if (res === this.edit_text_entry.SUBMIT) {
       let text = this.edit_text_entry.getText();
       if (text) {
         if (text[0] === '/') {
-          let handleCmdParse = (err, resp) => {
-            if (err) {
-              this.addChat(`[error] ${err}`);
-            } else if (resp) {
-              this.addChat(`[system] ${(typeof resp === 'string') ? resp : JSON.stringify(resp)}`);
-            }
-          };
-          let command = text.slice(1);
-          this.cmd_parse.handle(null, command, (err, resp) => {
-            if (err && this.cmd_parse.was_not_found) {
-              // forward to server
-              net.subs.sendCmdParse(command, handleCmdParse);
-            } else {
-              handleCmdParse(err, resp);
-            }
-          });
+          this.cmdParse(text.slice(1));
         } else {
           this.channel.send('chat', { msg: text }, { broadcast: true });
         }
@@ -130,12 +146,28 @@ ChatUI.prototype.run = function (opts) {
   function wordCallback(ignored, linenum, word) {
     numlines = Math.max(numlines, linenum);
   }
+  let now = Date.now();
   for (let ii = 0; ii < Math.min(this.msgs.length, this.max_messages); ++ii) {
-    let line = this.msgs[this.msgs.length - ii - 1];
+    let msg = this.msgs[this.msgs.length - ii - 1];
+    let age = now - msg.timestamp;
+    let alpha = is_focused ? 1 : 1 - clamp((age - FADE_START_TIME) / FADE_TIME, 0, 1);
+    if (!alpha) {
+      break;
+    }
+    let style = this.styles[msg.style || 'def'];
+    let line = msg.msg;
     numlines = 0;
     ui.font.wrapLines(w, indent, ui.font_height, line, wordCallback);
-    y -= ui.font_height * (numlines + 1);
-    ui.font.drawSizedWrapped(this.font_style, x, y, Z.CHAT + 1, w, indent, ui.font_height, line);
+    let h = ui.font_height * (numlines + 1);
+    y -= h;
+    ui.font.drawSizedWrapped(glov_font.styleAlpha(style, alpha), x, y, Z.CHAT + 1, w, indent, ui.font_height, line);
+    if (input.mouseOver({ x, y, w, h }) && !input.mousePosIsTouch()) {
+      ui.drawTooltip({
+        x, y: y - 100,
+        tooltip_width: 500,
+        tooltip: `Received at ${new Date(msg.timestamp).toString()}`
+      });
+    }
   }
 
   let border = 8;

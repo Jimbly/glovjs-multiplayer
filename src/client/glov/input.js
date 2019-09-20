@@ -913,8 +913,9 @@ export function dragOver(param) {
       if (!param.peek) {
         touch_data.dispatched_drag_over = true;
       }
+      camera2d.physicalToVirtual(cur_pos, touch_data.cur_pos);
       return {
-        cur_pos: touch_data.cur_pos,
+        cur_pos,
         drag_payload: touch_data.drag_payload
       };
     }

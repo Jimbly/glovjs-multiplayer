@@ -1,6 +1,7 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
 
+const assert = require('assert');
 const dot_prop = require('dot-prop');
 const FileStore = require('fs-store').FileStore;
 const mkdirp = require('mkdirp');
@@ -37,6 +38,9 @@ class DataStoreOneFile {
       cb(null, this.get(obj_name, key, default_value));
     });
   }
+  unload(obj_name) { // eslint-disable-line class-methods-use-this
+    // doing nothing, as we're not loading individualf iles
+  }
 }
 
 class DataStore {
@@ -61,6 +65,11 @@ class DataStore {
       store = this.stores[obj_name] = new FileStore(store_path);
     }
     return store;
+  }
+  unload(obj_name) {
+    let store = this.stores[obj_name];
+    assert(store);
+    delete this.stores[obj_name];
   }
   set(obj_name, key, value) {
     let store = this.getStore(obj_name);

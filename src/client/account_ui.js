@@ -6,6 +6,8 @@ const net = require('./glov/net.js');
 const ui = require('./glov/ui.js');
 const { vec4 } = require('./glov/vmath.js');
 
+const AUTO_ANON = false;
+
 function AccountUI() {
   this.edit_box_name = ui.createEditBox({
     placeholder: 'Username',
@@ -35,6 +37,34 @@ AccountUI.prototype.showLogin = function (param) {
     login_message = 'Logging in...';
   } else if (net.subs.logging_out) {
     login_message = 'Logging out...';
+  } else if (!net.subs.loggedIn() && AUTO_ANON && !local_storage.get('did_auto_anon') && !local_storage.get('name')) {
+    login_message = 'Auto logging in...';
+    local_storage.set('did_auto_anon', 'yes');
+    let name = `anon${String(Math.random()).slice(2, 8)}`;
+    let pass = 'test';
+    local_storage.set('name', name);
+    net.subs.login(name, pass, function (err) {
+      if (err) {
+        ui.modalDialog({
+          title: 'Auto-login Failed',
+          text: err,
+          buttons: {
+            'Retry': function () {
+              local_storage.set('did_auto_anon', undefined);
+              local_storage.set('name', undefined);
+            },
+            'Cancel': null,
+          },
+        });
+      } else {
+        net.subs.getMyUserChannel();
+        net.subs.sendCmdParse('rename_random', (err) => {
+          if (err) {
+            console.log(err);
+          }
+        });
+      }
+    });
   } else if (!net.subs.loggedIn()) {
     let submit = false;
     let w = 100;
@@ -69,12 +99,21 @@ AccountUI.prototype.showLogin = function (param) {
     let user_id = net.subs.loggedIn();
     let user_channel = net.subs.getChannel(`user.${user_id}`);
     let display_name = user_channel.getChannelData('public.display_name') || user_id;
-    ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y, Z.UI, ui.font_height,
-      // eslint-disable-next-line no-bitwise
-      calign | glov_font.ALIGN.VCENTER, 0, button_height,
-      (user_id !== display_name) ?
-        `Logged in as ${user_id} (Display Name: ${display_name})` :
+    if (user_id.toLowerCase() === display_name.toLowerCase()) {
+      ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y, Z.UI, ui.font_height,
+        // eslint-disable-next-line no-bitwise
+        calign | glov_font.ALIGN.VCENTER, 0, button_height,
+        `Logged in as ${display_name}`);
+    } else {
+      ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y - ui.font_height/2, Z.UI, ui.font_height,
+        // eslint-disable-next-line no-bitwise
+        calign | glov_font.ALIGN.VCENTER, 0, button_height,
         `Logged in as ${user_id}`);
+      ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y + ui.font_height/2, Z.UI, ui.font_height,
+        // eslint-disable-next-line no-bitwise
+        calign | glov_font.ALIGN.VCENTER, 0, button_height,
+        `Display Name: ${display_name}`);
+    }
     if (ui.buttonText({
       x, y, w: 240, h: button_height,
       text: 'Log out',
@@ -88,10 +127,11 @@ AccountUI.prototype.showLogin = function (param) {
     y += button_height + 8;
   }
   if (login_message) {
-    let w = ui.font.drawSizedAligned(style, x - 400, y, Z.UI, ui.font_height * 1.5, glov_font.ALIGN.HVCENTERFIT, 800,
-      min_h, login_message);
+    let w = ui.font.drawSizedAligned(style, center ? x - 400 : x, y, Z.UI, ui.font_height * 1.5,
+      glov_font.ALIGN.HVCENTERFIT,
+      center ? 800 : 400, min_h, login_message);
     w += 100;
-    ui.drawRect(x - w / 2, y, x + w / 2, y + min_h, Z.UI - 0.5, vec4(0,0,0,0.25));
+    ui.drawRect(x - (center ? w / 2 : 50), y, x + (center ? w / 2 : w - 50), y + min_h, Z.UI - 0.5, vec4(0,0,0,0.25));
     y += min_h;
   }
   return y;

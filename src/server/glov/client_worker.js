@@ -9,10 +9,20 @@ class ClientWorker extends ChannelWorker {
     super(channel_server, channel_id);
     this.client_id = this.channel_subid; // 1234
     this.client = null; // WSClient filled in by channel_server
-    this.ids = {
+    this.ids_base = {
       user_id: undefined,
       display_name: channel_id,
+      direct: undefined, // so it is iterated
     };
+    this.ids_direct = new Proxy(this.ids_base, {
+      get: function (target, prop) {
+        if (prop === 'direct') {
+          return true;
+        }
+        return target[prop];
+      }
+    });
+    this.ids = this.ids_base;
   }
 
   onApplyChannelData(source, data) {
@@ -25,8 +35,7 @@ class ClientWorker extends ChannelWorker {
       return;
     }
     if (data.key === 'public.display_name') {
-      this.ids.display_name = data.value;
-      this.client.ids.display_name = data.value;
+      this.ids_base.display_name = data.value;
     }
   }
 

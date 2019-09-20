@@ -1,7 +1,6 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
 /* eslint-env browser */
-/* global Z:false */
 
 require('./bootstrap.js'); // Just in case it's not in wrapper.js
 const assert = require('assert');

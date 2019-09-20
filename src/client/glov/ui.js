@@ -1,7 +1,6 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
 /* eslint no-underscore-dangle:off */
-/* global Z:false */
 
 window.Z = window.Z || {};
 Z.BORDERS = Z.BORDERS || 90;
@@ -624,6 +623,10 @@ export function modalDialog(params) {
   assert(Object.keys(params.buttons).length);
 
   modal_dialog = params;
+}
+
+export function modalDialogClear() {
+  modal_dialog = null;
 }
 
 function modalDialogRun() {

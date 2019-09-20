@@ -72,6 +72,7 @@ WSClient.prototype.send = function (msg, data, resp_func) {
 };
 
 WSClient.prototype.onError = function (e) {
+  console.error(e);
   throw e;
 };
 
@@ -95,15 +96,15 @@ WSClient.prototype.retryConnection = function () {
     assert(!client.socket);
     client.retry_scheduled = false;
     client.connect(true);
-  }, min(client.retry_count * client.retry_count * 100, 1000));
+  }, min(client.retry_count * client.retry_count * 100, 15000));
 };
 
 WSClient.prototype.connect = function (for_reconnect) {
   let client = this;
 
-  let path = for_reconnect && client.id && client.secret ?
-    `${client.path}?reconnect=${client.id}&secret=${client.secret}` :
-    client.path;
+  let path = `${client.path}?pver=${wscommon.PROTOCOL_VERSION}${
+    for_reconnect && client.id && client.secret ? `&reconnect=${client.id}&secret=${client.secret}` : ''
+  }`;
   let socket = new WebSocket(path);
   client.socket = socket;
 
@@ -147,9 +148,11 @@ WSClient.prototype.connect = function (for_reconnect) {
       console.log('WebSocket error during initial connection, retrying...', err);
       retry();
     } else {
-      console.log('WebSocket error', err);
+      console.error('WebSocket error', err);
       // Disconnect and reconnect here, is this a terminal error? Probably not, we'll get a 'close' event if it is?
-      client.onError(err);
+      // We some error occasionally on iOS, not sure what error, but it auto-reconnects fine, so let's
+      // not do a throw
+      // client.onError(err);
     }
   }));
 
