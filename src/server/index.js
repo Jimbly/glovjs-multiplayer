@@ -18,5 +18,5 @@ test_worker.init(glov_server.channel_server);
 let port = argv.port || process.env.port || 3000;
 
 server.listen(port, () => {
-  console.log(`Running server at http://localhost:${port}`);
+  console.info(`Running server at http://localhost:${port}`);
 });

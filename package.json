@@ -3,10 +3,14 @@
   "version": "0.0.1",
   "description": "Template for a state of the art online multiplayer Javascript project using GLOV.js",
   "main": "build/server/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:Jimbly/glovjs-multiplayer.git"
+  },
   "scripts": {
     "start": "gulp browser-sync",
     "build": "gulp build",
-    "prod": "gulp build && node build/server/index.js",
+    "prod": "gulp build && node build.prod/server/index.js",
     "client_js": "gulp client_js",
     "lint": "gulp eslint"
   },
@@ -18,6 +22,7 @@
   "dependencies": {
     "dot-prop": "^4.2.0",
     "express": "^4.17.1",
+    "express-static-gzip": "^2.0.5",
     "fs-store": "^0.3.1",
     "gl-mat3": "^2.0.0",
     "gl-mat4": "^1.2.0",
@@ -45,6 +50,7 @@
     "gulp-sourcemaps": "^2.6.5",
     "gulp-uglify": "^3.0.2",
     "gulp-useref": "^3.1.6",
+    "gulp-web-compress": "^0.3.0",
     "lazypipe": "^1.0.1",
     "uglify-js": "3.4.7",
     "vinyl-buffer": "^1.0.1",

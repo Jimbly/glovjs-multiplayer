@@ -55,6 +55,10 @@ export function pop() {
   set(old[0], old[1], old[2], old[3]);
 }
 
+export function domToCanvasRatio() {
+  return data[6];
+}
+
 // Drawing area 0,0-w,h
 // But keep the aspect ratio of those things drawn to be correct
 // This may create a padding or margin on either top and bottom or sides of the screen
@@ -163,7 +167,7 @@ export function htmlSize(w, h) {
   }
 }
 
-export function physicalToVirtual(dst, src) {
+export function domToVirtual(dst, src) {
   if (render_width) {
     dst[0] = (src[0] * data[6] - render_offset_x) * data[7] + data[0];
     dst[1] = (src[1] * data[6] - render_offset_y) * data[8] + data[1];
@@ -173,7 +177,7 @@ export function physicalToVirtual(dst, src) {
   }
 }
 
-export function physicalDeltaToVirtual(dst, src) {
+export function domDeltaToVirtual(dst, src) {
   if (render_width) {
     dst[0] = src[0] * data[6] * data[7];
     dst[1] = src[1] * data[6] * data[8];
@@ -184,13 +188,28 @@ export function physicalDeltaToVirtual(dst, src) {
 }
 
 // To get to coordinates used by mouse events
-export function virtualToPhysical(dst, src) {
+export function virtualToDom(dst, src) {
   if (render_width) {
     dst[0] = (render_offset_x + (src[0] - data[0]) / data[7]) / data[6];
     dst[1] = (render_offset_y + (src[1] - data[1]) / data[8]) / data[6];
   } else {
     dst[0] = (src[0] - data[0]) * data[4] / data[6];
     dst[1] = (src[1] - data[1]) * data[5] / data[6];
+  }
+}
+
+// dst/src are x/y/w/h objects (e.g. from input system)
+export function virtualToDomPosParam(dst, src) {
+  if (render_width) {
+    dst.x = (render_offset_x + (src.x - data[0]) / data[7]) / data[6];
+    dst.w = src.w / data[7] / data[6];
+    dst.y = (render_offset_y + (src.y - data[1]) / data[8]) / data[6];
+    dst.h = src.h / data[8] / data[6];
+  } else {
+    dst.x = (src.x - data[0]) * data[4] / data[6];
+    dst.w = src.w * data[4] / data[6];
+    dst.y = (src.y - data[1]) * data[5] / data[6];
+    dst.h = src.h * data[5] / data[6];
   }
 }
 

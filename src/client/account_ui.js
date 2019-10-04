@@ -1,7 +1,9 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
+/* eslint no-bitwise:off */
 const local_storage = require('./glov/local_storage.js');
 const glov_font = require('./glov/font.js');
+const { KEYS, keyDownEdge } = require('./glov/input.js');
 const net = require('./glov/net.js');
 const ui = require('./glov/ui.js');
 const { vec4 } = require('./glov/vmath.js');
@@ -19,18 +21,32 @@ function AccountUI() {
     type: 'password',
     text: local_storage.get('name') && local_storage.get('password') || '',
   });
+  this.edit_box_password_confirm = ui.createEditBox({
+    initial_focus: true,
+    placeholder: 'Confirm',
+    type: 'password',
+    text: '',
+  });
+  this.edit_box_email = ui.createEditBox({
+    placeholder: 'Email',
+    text: '',
+  });
+  this.edit_box_display_name = ui.createEditBox({
+    placeholder: 'Display',
+    text: '',
+  });
+  this.creation_mode = false;
 }
 
 AccountUI.prototype.showLogin = function (param) {
   let { x, y, style, button_height, prelogout, center } = param;
   button_height = button_height || ui.button_height;
-  let edit_box_name = this.edit_box_name;
-  let edit_box_password = this.edit_box_password;
+  let { edit_box_name, edit_box_password, edit_box_password_confirm, edit_box_email, edit_box_display_name } = this;
   let login_message;
   const BOX_H = ui.font_height;
   let pad = 10;
   let min_h = BOX_H * 2 + pad * 3 + button_height;
-  let calign = center ? glov_font.ALIGN.HRIGHT : glov_font.ALIGN.HLEFT;
+  let calign = center ? glov_font.ALIGN.HRIGHT : (glov_font.ALIGN.HLEFT | glov_font.ALIGN.HFIT);
   if (!net.client.connected) {
     login_message = 'Establishing connection...';
   } else if (net.subs.logging_in) {
@@ -67,33 +83,117 @@ AccountUI.prototype.showLogin = function (param) {
     });
   } else if (!net.subs.loggedIn()) {
     let submit = false;
-    let w = 100;
-    ui.font.drawSizedAligned(style, center ? x - 8 : x, y, Z.UI, ui.font_height, calign, 0, 0, 'Username:');
-    submit = edit_box_name.run({ x: center ? x : x + 140, y, w }) === edit_box_name.SUBMIT || submit;
+    let w = 200;
+    let indent = center ? 0 : 140;
+    let text_x = center ? x - 8 : x;
+    ui.font.drawSizedAligned(style, text_x, y, Z.UI, ui.font_height, calign, indent - pad, 0, 'Username:');
+    submit = edit_box_name.run({ x: x + indent, y, w }) === edit_box_name.SUBMIT || submit;
     y += BOX_H + pad;
-    ui.font.drawSizedAligned(style, center ? x - 8 : x, y, Z.UI, ui.font_height, calign, 0, 0, 'Password:');
-    submit = edit_box_password.run({ x: center ? x : x + 140, y, w }) === edit_box_password.SUBMIT || submit;
+    ui.font.drawSizedAligned(style, text_x, y, Z.UI, ui.font_height, calign, indent - pad, 0, 'Password:');
+    submit = edit_box_password.run({ x: x + indent, y, w }) === edit_box_password.SUBMIT || submit;
     y += BOX_H + pad;
-    submit = ui.buttonText({
-      x, y, w: 240, h: button_height,
-      text: 'Log in/Create User',
-    }) || submit;
-    y += button_height + pad;
 
-    if (submit) {
-      local_storage.set('name', edit_box_name.text);
-      // do log in!
-      net.subs.login(edit_box_name.text, edit_box_password.text, function (err) {
-        if (err) {
-          ui.modalDialog({
-            title: 'Login Error',
-            text: err,
-            buttons: {
-              'OK': null,
-            },
-          });
+    if (this.creation_mode) {
+      ui.font.drawSizedAligned(style, text_x, y, Z.UI, ui.font_height, calign, indent - pad, 0, 'Confirm Password:');
+      submit = edit_box_password_confirm.run({ x: x + indent, y, w }) === edit_box_password.SUBMIT || submit;
+      y += BOX_H + pad;
+
+      ui.font.drawSizedAligned(style, text_x, y, Z.UI, ui.font_height, calign, indent - pad, 0, 'Email Address:');
+      submit = edit_box_email.run({ x: x + indent, y, w }) === edit_box_password.SUBMIT || submit;
+      y += BOX_H + pad;
+
+      ui.font.drawSizedAligned(style, text_x, y, Z.UI, ui.font_height, calign, indent - pad, 0, 'Display Name:');
+      submit = edit_box_display_name.run({ x: x + indent, y, w: 200 }) === edit_box_password.SUBMIT ||
+        submit;
+
+      if (ui.buttonText({
+        x: x + w + (center ? 0 : 140) + pad, y, w: 80, h: BOX_H + pad - 4,
+        font_height: ui.font_height * 0.75,
+        text: 'Random',
+      })) {
+        net.client.send('random_name', null, function (ignored, data) {
+          if (data) {
+            edit_box_display_name.setText(data);
+          }
+        });
+      }
+
+      y += BOX_H + pad;
+
+      submit = ui.buttonText({
+        x, y, w: 150, h: button_height,
+        text: 'Create User',
+      }) || submit;
+      if (ui.buttonText({
+        x: x + 150 + pad, y, w: 150, h: button_height,
+        text: 'Cancel',
+      }) || keyDownEdge(KEYS.ESC)) {
+        this.creation_mode = false;
+      }
+      y += button_height + pad;
+
+      if (submit) {
+        local_storage.set('name', edit_box_name.text);
+        // do creation and log in!
+        net.subs.userCreate({
+          user_id: edit_box_name.text,
+          email: edit_box_email.text,
+          password: edit_box_password.text,
+          password_confirm: edit_box_password_confirm.text,
+          display_name: edit_box_display_name.text,
+        }, (err) => {
+          if (err) {
+            ui.modalDialog({
+              title: 'Login Error',
+              text: err,
+              buttons: {
+                'OK': null,
+              },
+            });
+          } else {
+            this.creation_mode = false;
+            edit_box_password_confirm.setText('');
+            edit_box_email.setText('');
+            edit_box_display_name.setText('');
+          }
+        });
+      }
+
+    } else {
+      submit = ui.buttonText({
+        x, y, w: 150, h: button_height,
+        text: 'Log in',
+      }) || submit;
+      if (ui.buttonText({
+        x: x + 150 + pad, y, w: 150, h: button_height,
+        text: 'New User',
+      })) {
+        this.creation_mode = true;
+        edit_box_display_name.setText(edit_box_name.text);
+        if (edit_box_name.text && edit_box_password.text) {
+          edit_box_password_confirm.initial_focus = true;
+        } else {
+          edit_box_password_confirm.initial_focus = false;
+          edit_box_name.focus();
         }
-      });
+      }
+      y += button_height + pad;
+
+      if (submit) {
+        local_storage.set('name', edit_box_name.text);
+        // do log in!
+        net.subs.login(edit_box_name.text, edit_box_password.text, (err) => {
+          if (err) {
+            ui.modalDialog({
+              title: 'Login Error',
+              text: err,
+              buttons: {
+                'OK': null,
+              },
+            });
+          }
+        });
+      }
     }
   } else {
     let user_id = net.subs.loggedIn();
@@ -101,17 +201,14 @@ AccountUI.prototype.showLogin = function (param) {
     let display_name = user_channel.getChannelData('public.display_name') || user_id;
     if (user_id.toLowerCase() === display_name.toLowerCase()) {
       ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y, Z.UI, ui.font_height,
-        // eslint-disable-next-line no-bitwise
-        calign | glov_font.ALIGN.VCENTER, 0, button_height,
+        calign | glov_font.ALIGN.VCENTER, 400, button_height,
         `Logged in as ${display_name}`);
     } else {
-      ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y - ui.font_height/2, Z.UI, ui.font_height,
-        // eslint-disable-next-line no-bitwise
-        calign | glov_font.ALIGN.VCENTER, 0, button_height,
+      ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y + ui.font_height * (center ? -0.5 : -0.25),
+        Z.UI, ui.font_height, calign | glov_font.ALIGN.VCENTER, 400, button_height,
         `Logged in as ${user_id}`);
-      ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y + ui.font_height/2, Z.UI, ui.font_height,
-        // eslint-disable-next-line no-bitwise
-        calign | glov_font.ALIGN.VCENTER, 0, button_height,
+      ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y + ui.font_height * (center ? 0.5 : 0.75),
+        Z.UI, ui.font_height, calign | glov_font.ALIGN.VCENTER, 400, button_height,
         `Display Name: ${display_name}`);
     }
     if (ui.buttonText({

@@ -1,6 +1,7 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
 const camera2d = require('./glov/camera2d.js');
+const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const input = require('./glov/input.js');
 const net = require('./glov/net.js');
@@ -10,11 +11,12 @@ const { clamp } = require('../common/util.js');
 const FADE_START_TIME = 10000;
 const FADE_TIME = 1000;
 
-function ChatUI(cmd_parse) {
+function ChatUI(cmd_parse, max_len) {
   this.cmd_parse = cmd_parse;
   this.edit_text_entry = ui.createEditBox({
     placeholder: 'Chatbox',
     initial_focus: false,
+    max_len,
     text: '',
   });
   this.channel = null;
@@ -23,7 +25,8 @@ function ChatUI(cmd_parse) {
   this.on_leave = this.onMsgLeave.bind(this);
   this.on_chat = this.onMsgChat.bind(this);
   this.msgs = [];
-  this.max_messages = 6;
+  this.max_messages = 8;
+  this.max_len = max_len;
 
   this.styles = {
     def: glov_font.style(null, {
@@ -37,6 +40,10 @@ function ChatUI(cmd_parse) {
       outline_color: 0x000000ff,
     }),
   };
+
+  net.subs.on('admin_msg', (msg) => {
+    this.addChat(msg, 'error');
+  });
 }
 
 ChatUI.prototype.addChat = function (msg, style) {
@@ -84,6 +91,14 @@ ChatUI.prototype.cmdParse = function (str) {
   });
 };
 
+function pad2(str) {
+  return `0${str}`.slice(-2);
+}
+function conciseDate(dt) {
+  return `${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())} ${pad2(dt.getHours())
+  }:${pad2(dt.getMinutes())}:${pad2(dt.getSeconds())}`;
+}
+
 ChatUI.prototype.run = function (opts) {
   opts = opts || {};
   if (net.client.disconnected) {
@@ -105,39 +120,49 @@ ChatUI.prototype.run = function (opts) {
   let x = camera2d.x0() + 10;
   let y0 = camera2d.y1();
   let y = y0;
-  let w = (camera2d.x1() - camera2d.x0()) / 2;
+  let w = engine.game_width / 2;
   let is_focused = false;
   if (net.subs.loggedIn() && !(ui.modal_dialog || ui.menu_up || opts.hide)) {
-    y -= 40;
     let was_focused = this.edit_text_entry.isFocused();
-    let res = this.edit_text_entry.run({ x, y, w });
-    is_focused = this.edit_text_entry.isFocused();
-    if (res === this.edit_text_entry.SUBMIT) {
-      let text = this.edit_text_entry.getText();
-      if (text) {
-        if (text[0] === '/') {
-          this.cmdParse(text.slice(1));
+    y -= 40;
+    if (!was_focused && opts.pointerlock && input.pointerLocked()) {
+      // do not show edit box
+      ui.font.drawSizedAligned(this.styles.def, x, y, Z.CHAT + 1, ui.font_height, glov_font.ALIGN.HFIT, w, 0,
+        '<Press Enter to chat>');
+    } else {
+      let res = this.edit_text_entry.run({ x, y, w, pointer_lock: opts.pointerlock });
+      is_focused = this.edit_text_entry.isFocused();
+      if (res === this.edit_text_entry.SUBMIT) {
+        let text = this.edit_text_entry.getText();
+        if (text) {
+          if (text[0] === '/') {
+            this.cmdParse(text.slice(1));
+          } else {
+            if (text.length > this.max_len) {
+              this.addChat('[error] Chat message too long');
+            } else {
+              this.channel.send('chat', { msg: text }, { broadcast: true }, (err) => {
+                if (err) {
+                  this.addChat(`[error] ${err}`);
+                }
+              });
+            }
+          }
+          this.edit_text_entry.setText('');
         } else {
-          this.channel.send('chat', { msg: text }, { broadcast: true });
+          is_focused = false;
+          ui.focusCanvas();
         }
-        this.edit_text_entry.setText('');
-      } else {
-        is_focused = false;
+      }
+      if (opts.pointerlock && is_focused && input.pointerLocked()) {
+        // Gained focus undo pointerlock
+        input.pointerLockExit();
+      }
+      if (is_focused && was_focused && input.mouseDownEdge({ peek: true })) {
+        // On touch, tapping doesn't always remove focus from the edit box!
+        // Maybe this logic should be in the editbox logic?
         ui.focusCanvas();
       }
-    }
-    if (opts.pointerlock && was_focused && !is_focused && !input.pointerLocked()) {
-      // Lost focus, restore pointer lock
-      input.pointerLockEnter(true);
-    }
-    if (opts.pointerlock && is_focused && input.pointerLocked()) {
-      // Gained focus undo pointerlock
-      input.pointerLockExit();
-    }
-    if (is_focused && was_focused && input.mouseDownEdge({ peek: true })) {
-      // On touch, tapping doesn't always remove focus from the edit box!
-      // Maybe this logic should be in the editbox logic?
-      ui.focusCanvas();
     }
   }
   y -= 8;
@@ -163,15 +188,17 @@ ChatUI.prototype.run = function (opts) {
     ui.font.drawSizedWrapped(glov_font.styleAlpha(style, alpha), x, y, Z.CHAT + 1, w, indent, ui.font_height, line);
     if (input.mouseOver({ x, y, w, h }) && !input.mousePosIsTouch()) {
       ui.drawTooltip({
-        x, y: y - 100,
-        tooltip_width: 500,
-        tooltip: `Received at ${new Date(msg.timestamp).toString()}`
+        x, y: y - 50,
+        tooltip_width: 350,
+        tooltip_pad: ui.tooltip_pad * 0.5,
+        tooltip: `Received at ${conciseDate(new Date(msg.timestamp))}`,
+        pixel_scale: ui.tooltip_panel_pixel_scale * 0.5,
       });
     }
   }
 
   let border = 8;
-  ui.drawRect(x - border, y - border, x + w + border + 8, y0, Z.CHAT, [1,1,1,0.2]);
+  ui.drawRect(camera2d.x0(), y - border, x + w + border + 8, y0, Z.CHAT, [0.3,0.3,0.3,0.75]);
 };
 
 ChatUI.prototype.setChannel = function (channel) {

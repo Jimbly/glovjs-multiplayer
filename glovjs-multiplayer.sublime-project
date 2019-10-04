@@ -6,7 +6,9 @@
       "folder_exclude_patterns":
       [
         "node_modules",
-        "build",
+        "build.dev",
+        "build.prod",
+        "logs"
       ],
       "file_exclude_patterns": ["jquery-*.min*"],
       "path": "."
