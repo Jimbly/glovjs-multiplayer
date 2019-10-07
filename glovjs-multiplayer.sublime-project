@@ -10,7 +10,7 @@
         "build.prod",
         "logs"
       ],
-      "file_exclude_patterns": ["jquery-*.min*"],
+      "file_exclude_patterns": ["jquery-*.min*", "*.00?", "*.wav", "package-lock.json"],
       "path": "."
     }
   ]

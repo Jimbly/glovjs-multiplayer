@@ -25,7 +25,7 @@ const textures = require('./textures.js');
 const glov_transition = require('./transition.js');
 const glov_ui = require('./ui.js');
 const urlhash = require('./urlhash.js');
-const { ridx } = require('../../common/util.js');
+const { defaults, ridx } = require('../../common/util.js');
 const { mat3, mat4, vec3, vec4, v3mulMat4, v3normalize, v4copy, v4set } = require('./vmath.js');
 
 export let canvas;
@@ -71,24 +71,6 @@ export let light_dir_ws = vec3(-1, -2, -3);
 export let font;
 export let app_state = null;
 export const border_color = vec4(0, 0, 0, 1);
-export const pico8_colors = [
-  vec4(0, 0, 0, 1),
-  vec4(0.114, 0.169, 0.326, 1),
-  vec4(0.494, 0.145, 0.326, 1),
-  vec4(0.000, 0.529, 0.328, 1),
-  vec4(0.671, 0.322, 0.212, 1),
-  vec4(0.373, 0.341, 0.310, 1),
-  vec4(0.761, 0.765, 0.780, 1),
-  vec4(1.000, 0.945, 0.910, 1),
-  vec4(1.000, 0.000, 0.302, 1),
-  vec4(1.000, 0.639, 0.000, 1),
-  vec4(1.000, 0.925, 0.153, 1),
-  vec4(0.000, 0.894, 0.212, 1),
-  vec4(0.161, 0.678, 1.000, 1),
-  vec4(0.514, 0.463, 0.612, 1),
-  vec4(1.000, 0.467, 0.659, 1),
-  vec4(1.000, 0.800, 0.667, 1),
-];
 
 export let fps_style = glov_font.style({
   outline_width: 2, outline_color: 0x00000080,
@@ -104,6 +86,11 @@ export function setGlobalMatrices(_mat_view) {
 
 export function setFOV(new_fov) {
   fov_min = new_fov;
+}
+
+export function setGameDims(w, h) {
+  game_width = w;
+  game_height = h;
 }
 
 function normalizeRow(m, idx) {
@@ -488,7 +475,7 @@ export function startup(params) {
 
   let is_pixely = params.pixely && params.pixely !== 'off';
   antialias = params.antialias || !is_pixely && params.antialias !== false;
-  let powerPreference = 'high-performance';
+  let powerPreference = params.high ? 'high-performance' : 'default';
   let context_names = ['webgl', 'experimental-webgl'];
   let context_opts = [{ antialias, powerPreference }, { powerPreference }, {}];
   let good = false;
@@ -596,10 +583,10 @@ export function startup(params) {
   if (params.sound_manager) {
     // Require caller to require this module, so we don't force it loaded/bundled in programs that do not need it
     sound_manager = params.sound_manager;
-    glov_ui.bindSounds(sound_manager, { // TODO: Allow overriding?
+    glov_ui.bindSounds(sound_manager, defaults(params.ui_sounds || {}, {
       button_click: 'button_click',
       rollover: 'rollover',
-    });
+    }));
   } else {
     sound_manager = sound_manager_dummy;
   }
