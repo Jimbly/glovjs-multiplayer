@@ -199,16 +199,17 @@ AccountUI.prototype.showLogin = function (param) {
     let user_id = net.subs.loggedIn();
     let user_channel = net.subs.getChannel(`user.${user_id}`);
     let display_name = user_channel.getChannelData('public.display_name') || user_id;
+    let width = center ? 0 : 400;
     if (user_id.toLowerCase() === display_name.toLowerCase()) {
       ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y, Z.UI, ui.font_height,
-        calign | glov_font.ALIGN.VCENTER, 400, button_height,
+        calign | glov_font.ALIGN.VCENTER, width, button_height,
         `Logged in as ${display_name}`);
     } else {
       ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y + ui.font_height * (center ? -0.5 : -0.25),
-        Z.UI, ui.font_height, calign | glov_font.ALIGN.VCENTER, 400, button_height,
+        Z.UI, ui.font_height, calign | glov_font.ALIGN.VCENTER, width, button_height,
         `Logged in as ${user_id}`);
       ui.font.drawSizedAligned(style, center ? x - 8 : x + 240 + 8, y + ui.font_height * (center ? 0.5 : 0.75),
-        Z.UI, ui.font_height, calign | glov_font.ALIGN.VCENTER, 400, button_height,
+        Z.UI, ui.font_height, calign | glov_font.ALIGN.VCENTER, width, button_height,
         `Display Name: ${display_name}`);
     }
     if (ui.buttonText({
