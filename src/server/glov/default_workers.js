@@ -52,7 +52,7 @@ export class DefaultUserWorker extends ChannelWorker {
     if (!data.password) {
       return resp_func('Missing password');
     }
-    if (!email_regex.test(data.email)) {
+    if (this.require_email && !email_regex.test(data.email)) {
       return resp_func('Email invalid');
     }
     if (!validDisplayName(data.display_name)) {
@@ -86,6 +86,7 @@ export class DefaultUserWorker extends ChannelWorker {
   }
 }
 DefaultUserWorker.prototype.auto_destroy = true;
+DefaultUserWorker.prototype.require_email = true;
 
 class ChannelServerWorker extends ChannelWorker {
   handleWorkerRemoved(src, data, resp_func) {

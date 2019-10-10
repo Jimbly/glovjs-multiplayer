@@ -109,6 +109,7 @@ function SubscriptionManager(client) {
   this.was_logged_in = false;
   this.logging_in = false;
   this.logging_out = false;
+  this.auto_create_user = false;
 
   this.first_connect = true;
   this.server_time = 0;
@@ -343,7 +344,20 @@ SubscriptionManager.prototype.login = function (username, password, resp_func) {
     local_storage.set('password', `prehashed$$${hashed_password}`);
   }
   this.login_credentials = { user_id: username, password: hashed_password };
-  return this.loginInternal(this.login_credentials, resp_func);
+  if (!this.auto_create_user) {
+    // Just return result directly
+    return this.loginInternal(this.login_credentials, resp_func);
+  }
+  return this.loginInternal(this.login_credentials, (err, data) => {
+    if (!err || err !== 'ERR_USER_NOT_FOUND') {
+      return void resp_func(err, data);
+    }
+    // user not found, auto-create
+    this.userCreate({
+      user_id: username,
+      password,
+    }, resp_func);
+  });
 };
 
 SubscriptionManager.prototype.userCreate = function (params, resp_func) {
@@ -353,10 +367,10 @@ SubscriptionManager.prototype.userCreate = function (params, resp_func) {
   if (!params.password) {
     return resp_func('Missing password');
   }
-  if (!params.password_confirm) {
+  if (!this.auto_create_user && !params.password_confirm) {
     return resp_func('Missing password confirmation');
   }
-  if (!params.email) {
+  if (!this.auto_create_user && !params.email) {
     return resp_func('Missing email');
   }
   let hashed_password = hashedPassword(params.user_id, params.password);

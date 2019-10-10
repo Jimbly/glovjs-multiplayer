@@ -44,6 +44,7 @@ function onSetChannelData(client, data, resp_func) {
   let client_channel = client.client_channel;
 
   if (!client_channel.isSubscribedTo(channel_id)) {
+    console.error(` - failed, client is not on channel ${channel_id}`);
     return void resp_func(`Client is not on channel ${channel_id}`);
   }
 
@@ -215,7 +216,7 @@ function onLogOut(client, data, resp_func) {
 
   onUnSubscribe(client, `user.${user_id}`);
   delete client_channel.ids_base.user_id;
-  delete client_channel.ids_base.display_name;
+  client_channel.ids_base.display_name = client_channel.channel_id;
 
   // Tell channels we have a new user id/display name
   for (let channel_id in client_channel.subscribe_counts) {
