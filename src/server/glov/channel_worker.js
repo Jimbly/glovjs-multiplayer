@@ -629,7 +629,7 @@ export class ChannelWorker {
     let channel_worker = this;
     let ids = net_data.ids || {};
     let split = source.split('.');
-    assert(split.length === 2);
+    assert.equal(split.length, 2);
     ids.type = split[0];
     ids.id = split[1];
     ids.channel_id = source;

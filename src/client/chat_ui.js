@@ -1,6 +1,7 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
 const camera2d = require('./glov/camera2d.js');
+const { cmd_parse } = require('./glov/cmds.js');
 const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const input = require('./glov/input.js');
@@ -11,8 +12,7 @@ const { clamp } = require('../common/util.js');
 const FADE_START_TIME = 10000;
 const FADE_TIME = 1000;
 
-function ChatUI(cmd_parse, max_len) {
-  this.cmd_parse = cmd_parse;
+function ChatUI(max_len) {
   this.edit_text_entry = ui.createEditBox({
     placeholder: 'Chatbox',
     initial_focus: false,
@@ -24,6 +24,9 @@ function ChatUI(cmd_parse, max_len) {
   this.on_join = this.onMsgJoin.bind(this);
   this.on_leave = this.onMsgLeave.bind(this);
   this.on_chat = this.onMsgChat.bind(this);
+  this.handle_cmd_parse = this.handleCmdParse.bind(this);
+  this.handle_cmd_parse_error = this.handleCmdParseError.bind(this);
+  cmd_parse.setDefaultHandler(this.handle_cmd_parse_error);
   this.msgs = [];
   this.max_messages = 8;
   this.max_len = max_len;
@@ -73,22 +76,33 @@ ChatUI.prototype.runLate = function () {
   }
 };
 
+ChatUI.prototype.handleCmdParseError = function (err, resp) {
+  if (err) {
+    this.addChat(`[error] ${err}`);
+  }
+};
+
+ChatUI.prototype.handleCmdParse = function (err, resp) {
+  if (err) {
+    this.addChat(`[error] ${err}`);
+  } else if (resp) {
+    this.addChat(`[system] ${(typeof resp === 'string') ? resp : JSON.stringify(resp)}`);
+  }
+};
+
 ChatUI.prototype.cmdParse = function (str) {
-  let handleCmdParse = (err, resp) => {
-    if (err) {
-      this.addChat(`[error] ${err}`);
-    } else if (resp) {
-      this.addChat(`[system] ${(typeof resp === 'string') ? resp : JSON.stringify(resp)}`);
-    }
-  };
-  this.cmd_parse.handle(null, str, (err, resp) => {
-    if (err && this.cmd_parse.was_not_found) {
+  cmd_parse.handle(null, str, (err, resp) => {
+    if (err && cmd_parse.was_not_found) {
       // forward to server
-      net.subs.sendCmdParse(str, handleCmdParse);
+      net.subs.sendCmdParse(str, this.handle_cmd_parse);
     } else {
-      handleCmdParse(err, resp);
+      this.handle_cmd_parse(err, resp);
     }
   });
+};
+
+ChatUI.prototype.cmdParseInternal = function (str) {
+  cmd_parse.handle(null, str, this.handle_cmd_parse_error);
 };
 
 function pad2(str) {
@@ -238,6 +252,6 @@ ChatUI.prototype.setChannel = function (channel) {
   }
 };
 
-export function create(...args) {
-  return new ChatUI(...args);
+export function create(max_len) {
+  return new ChatUI(max_len);
 }

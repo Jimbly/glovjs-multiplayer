@@ -6,7 +6,7 @@ const { ChannelWorker } = require('./channel_worker.js');
 const md5 = require('../../common/md5.js');
 const random_names = require('./random_names.js');
 
-const email_regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
+const email_regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function validDisplayName(display_name) {
   if (!display_name) {
@@ -95,10 +95,13 @@ class ChannelServerWorker extends ChannelWorker {
   }
 }
 
+export const regex_valid_username = /^[a-z][a-z0-9_]+$/;
+
 let inited = false;
 let user_worker = DefaultUserWorker;
 let user_worker_init_data = {
   autocreate: true,
+  subid_regex: regex_valid_username,
   cmds: {
     rename: DefaultUserWorker.prototype.cmdRename,
     rename_random: DefaultUserWorker.prototype.cmdRenameRandom,
@@ -129,6 +132,7 @@ export function init(channel_server) {
   channel_server.registerChannelWorker('user', user_worker, user_worker_init_data);
   channel_server.registerChannelWorker('channel_server', ChannelServerWorker, {
     autocreate: false,
+    subid_regex: /^[0-9-]+$/,
     handlers: {
       worker_removed: ChannelServerWorker.prototype.handleWorkerRemoved,
     },

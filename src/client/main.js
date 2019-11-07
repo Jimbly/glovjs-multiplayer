@@ -1,6 +1,5 @@
 /*eslint global-require:off*/
 
-const cmd_parse = require('../common/cmd_parse.js').create();
 const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const fs = require('fs');
@@ -50,7 +49,8 @@ export function main() {
     return;
   }
 
-  const test_shader = shaders.create(gl.FRAGMENT_SHADER, fs.readFileSync(`${__dirname}/shaders/test.fp`, 'utf8'));
+  const test_shader = shaders.create(gl.FRAGMENT_SHADER, 'test.fp',
+    fs.readFileSync(`${__dirname}/shaders/test.fp`, 'utf8'));
 
   const sound_manager = engine.sound_manager;
   // const font = engine.font;
@@ -60,7 +60,7 @@ export function main() {
   const createAnimation = sprite_animation.create;
 
   app.account_ui = require('./account_ui.js').create();
-  app.chat_ui = require('./chat_ui.js').create(cmd_parse);
+  app.chat_ui = require('./chat_ui.js').create(1000);
 
   const color_white = vec4(1, 1, 1, 1);
   const color_gray = vec4(0.5, 0.5, 0.5, 1);
@@ -69,7 +69,7 @@ export function main() {
 
   // Cache KEYS
   const KEYS = input.KEYS;
-  const pad_codes = input.pad_codes;
+  const PAD = input.PAD;
 
   const sprite_size = 64;
   function initGraphics() {
@@ -125,30 +125,19 @@ export function main() {
     }
 
     test.character.dx = 0;
+    test.character.dx -= input.keyDown(KEYS.LEFT) + input.keyDown(KEYS.A) + input.padButtonDown(PAD.LEFT);
+    test.character.dx += input.keyDown(KEYS.RIGHT) + input.keyDown(KEYS.D) + input.padButtonDown(PAD.RIGHT);
     test.character.dy = 0;
-    if (input.keyDown(KEYS.LEFT) || input.keyDown(KEYS.A) ||
-      input.padButtonDown(pad_codes.LEFT)
-    ) {
-      test.character.dx = -1;
+    test.character.dy -= input.keyDown(KEYS.UP) + input.keyDown(KEYS.W) + input.padButtonDown(PAD.UP);
+    test.character.dy += input.keyDown(KEYS.DOWN) + input.keyDown(KEYS.S) + input.padButtonDown(PAD.DOWN);
+    if (test.character.dx < 0) {
       sprites.animation.setState('idle_left');
-    } else if (input.keyDown(KEYS.RIGHT) || input.keyDown(KEYS.D) ||
-      input.padButtonDown(pad_codes.RIGHT)
-    ) {
-      test.character.dx = 1;
+    } else if (test.character.dx > 0) {
       sprites.animation.setState('idle_right');
     }
-    if (input.keyDown(KEYS.UP) || input.keyDown(KEYS.W) ||
-      input.padButtonDown(pad_codes.UP)
-    ) {
-      test.character.dy = -1;
-    } else if (input.keyDown(KEYS.DOWN) || input.keyDown(KEYS.S) ||
-      input.padButtonDown(pad_codes.DOWN)
-    ) {
-      test.character.dy = 1;
-    }
 
-    test.character.x += test.character.dx * dt * 0.2;
-    test.character.y += test.character.dy * dt * 0.2;
+    test.character.x += test.character.dx * 0.2;
+    test.character.y += test.character.dy * 0.2;
     let bounds = {
       x: test.character.x - sprite_size/2,
       y: test.character.y - sprite_size/2,

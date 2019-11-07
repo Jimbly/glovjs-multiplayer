@@ -333,9 +333,11 @@ function hashedPassword(user_id, password) {
 
 
 SubscriptionManager.prototype.login = function (username, password, resp_func) {
+  username = (username || '').trim();
   if (!username) {
     return resp_func('Missing username');
   }
+  password = (password || '').trim();
   if (!password) {
     return resp_func('Missing password');
   }
@@ -361,18 +363,23 @@ SubscriptionManager.prototype.login = function (username, password, resp_func) {
 };
 
 SubscriptionManager.prototype.userCreate = function (params, resp_func) {
+  params.user_id = (params.user_id || '').trim();
   if (!params.user_id) {
     return resp_func('Missing username');
   }
+  params.password = (params.password || '').trim();
   if (!params.password) {
     return resp_func('Missing password');
   }
+  params.password_confirm = (params.password_confirm || '').trim();
   if (!this.auto_create_user && !params.password_confirm) {
     return resp_func('Missing password confirmation');
   }
+  params.email = (params.email || '').trim();
   if (!this.auto_create_user && !params.email) {
     return resp_func('Missing email');
   }
+  params.display_name = (params.display_name || '').trim();
   let hashed_password = hashedPassword(params.user_id, params.password);
   if (hashed_password !== params.password) {
     local_storage.set('password', `prehashed$$${hashed_password}`);
