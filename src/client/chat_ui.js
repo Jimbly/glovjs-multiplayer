@@ -1,16 +1,99 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
+const assert = require('assert');
 const camera2d = require('./glov/camera2d.js');
 const { cmd_parse } = require('./glov/cmds.js');
 const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const input = require('./glov/input.js');
+const local_storage = require('./glov/local_storage.js');
 const net = require('./glov/net.js');
 const ui = require('./glov/ui.js');
 const { clamp } = require('../common/util.js');
 
 const FADE_START_TIME = 10000;
 const FADE_TIME = 1000;
+
+function CmdHistory() {
+  assert(local_storage.storage_prefix !== 'demo'); // wrong initialization order
+  this.entries = new Array(50);
+  this.idx = local_storage.getJSON('console_idx'); // where we will next insert
+  if (typeof this.idx !== 'number' || this.idx < 0 || this.idx >= this.entries.length) {
+    this.idx = 0;
+  } else {
+    for (let ii = 0; ii < this.entries.length; ++ii) {
+      this.entries[ii] = local_storage.getJSON(`console_e${ii}`);
+    }
+  }
+  this.resetPos();
+}
+CmdHistory.prototype.setHist = function (idx, text) {
+  this.entries[idx] = text;
+  local_storage.setJSON(`console_e${idx}`, text);
+};
+CmdHistory.prototype.add = function (text) {
+  if (!text) {
+    return;
+  }
+  let idx = this.entries.indexOf(text);
+  if (idx !== -1) {
+    // already in there, just re-order
+    let target = (this.idx - 1 + this.entries.length) % this.entries.length;
+    while (idx !== target) {
+      let next = (idx + 1) % this.entries.length;
+      this.setHist(idx, this.entries[next]);
+      idx = next;
+    }
+    this.setHist(target, text);
+    return;
+  }
+  this.setHist(this.idx, text);
+  this.idx = (this.idx + 1) % this.entries.length;
+  local_storage.setJSON('console_idx', this.idx);
+  this.resetPos();
+};
+CmdHistory.prototype.unadd = function (text) {
+  // upon error, do not store this string in our history
+  let idx = (this.idx - 1 + this.entries.length) % this.entries.length;
+  if (this.entries[idx] !== text) {
+    return;
+  }
+  this.idx = idx;
+  local_storage.setJSON('console_idx', this.idx);
+  this.resetPos();
+};
+CmdHistory.prototype.resetPos = function () {
+  this.hist_idx = this.idx;
+  this.edit_line = '';
+};
+CmdHistory.prototype.prev = function (cur_text) {
+  if (this.hist_idx === this.idx) {
+    // if first time goine backwards, stash the current edit line
+    this.edit_line = cur_text;
+  }
+  let idx = (this.hist_idx - 1 + this.entries.length) % this.entries.length;
+  let text = this.entries[idx];
+  if (idx === this.idx || !text) {
+    // wrapped around, or got to empty
+    return this.entries[this.hist_idx] || '';
+  }
+  this.hist_idx = idx;
+  return text || '';
+};
+CmdHistory.prototype.next = function (cur_text) {
+  if (this.hist_idx === this.idx) {
+    return cur_text || '';
+  }
+  let idx = (this.hist_idx + 1) % this.entries.length;
+  this.hist_idx = idx;
+  if (this.hist_idx === this.idx) {
+    // just got back to head
+    let ret = this.edit_line;
+    this.edit_line = '';
+    return ret || '';
+  }
+  return this.entries[idx] || '';
+};
 
 function ChatUI(max_len) {
   this.edit_text_entry = ui.createEditBox({
@@ -30,6 +113,7 @@ function ChatUI(max_len) {
   this.msgs = [];
   this.max_messages = 8;
   this.max_len = max_len;
+  this.history = new CmdHistory();
 
   this.styles = {
     def: glov_font.style(null, {
@@ -152,14 +236,31 @@ ChatUI.prototype.run = function (opts) {
       ui.font.drawSizedAligned(this.styles.def, x, y, Z.CHAT + 1, ui.font_height, glov_font.ALIGN.HFIT, w, 0,
         '<Press Enter to chat>');
     } else {
+      if (was_focused) {
+        let cur_text = this.edit_text_entry.getText();
+        if (!cur_text) {
+          this.history.resetPos();
+        }
+        if (input.keyDownEdge(input.KEYS.UP)) {
+          this.edit_text_entry.setText(this.history.prev(cur_text));
+        }
+        if (input.keyDownEdge(input.KEYS.DOWN)) {
+          this.edit_text_entry.setText(this.history.next(cur_text));
+        }
+      }
       let res = this.edit_text_entry.run({ x, y, w, pointer_lock: opts.pointerlock });
       is_focused = this.edit_text_entry.isFocused();
       if (res === this.edit_text_entry.SUBMIT) {
         let text = this.edit_text_entry.getText();
         if (text) {
           if (text[0] === '/') {
+            if (text[1] === '/') { // common error of starting with //foo because chat was already focused
+              text = text.slice(1);
+            }
+            this.history.add(text);
             this.cmdParse(text.slice(1), () => {
               if (!this.edit_text_entry.getText()) {
+                this.history.unadd(text);
                 this.edit_text_entry.setText(text);
               }
             });
@@ -170,9 +271,9 @@ ChatUI.prototype.run = function (opts) {
               this.channel.send('chat', { msg: text }, { broadcast: true }, (err) => {
                 if (err) {
                   this.addChat(`[error] ${err}`);
-                  if (!this.edit_text_entry.getText()) {
-                    this.edit_text_entry.setText(text);
-                  }
+                  // if (!this.edit_text_entry.getText()) {
+                  //   this.edit_text_entry.setText(text);
+                  // }
                 }
               });
             }
