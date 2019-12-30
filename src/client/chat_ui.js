@@ -90,13 +90,21 @@ ChatUI.prototype.handleCmdParse = function (err, resp) {
   }
 };
 
-ChatUI.prototype.cmdParse = function (str) {
-  cmd_parse.handle(null, str, (err, resp) => {
+ChatUI.prototype.cmdParse = function (str, on_error) {
+  let handleResult = on_error ?
+    (err, resp) => {
+      this.handle_cmd_parse(err, resp);
+      if (on_error && err) {
+        on_error(err);
+      }
+    } :
+    this.handle_cmd_parse;
+  cmd_parse.handle(null, str, function (err, resp) {
     if (err && cmd_parse.was_not_found) {
       // forward to server
-      net.subs.sendCmdParse(str, this.handle_cmd_parse);
+      net.subs.sendCmdParse(str, handleResult);
     } else {
-      this.handle_cmd_parse(err, resp);
+      handleResult(err, resp);
     }
   });
 };
@@ -150,7 +158,11 @@ ChatUI.prototype.run = function (opts) {
         let text = this.edit_text_entry.getText();
         if (text) {
           if (text[0] === '/') {
-            this.cmdParse(text.slice(1));
+            this.cmdParse(text.slice(1), () => {
+              if (!this.edit_text_entry.getText()) {
+                this.edit_text_entry.setText(text);
+              }
+            });
           } else {
             if (text.length > this.max_len) {
               this.addChat('[error] Chat message too long');
@@ -158,6 +170,9 @@ ChatUI.prototype.run = function (opts) {
               this.channel.send('chat', { msg: text }, { broadcast: true }, (err) => {
                 if (err) {
                   this.addChat(`[error] ${err}`);
+                  if (!this.edit_text_entry.getText()) {
+                    this.edit_text_entry.setText(text);
+                  }
                 }
               });
             }
