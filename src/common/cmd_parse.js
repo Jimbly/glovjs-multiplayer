@@ -45,12 +45,19 @@ CmdParse.prototype.handle = function (self, str, resp_func) {
     resp_func(`Unknown command: "${m[1]}"`);
     return false;
   }
-  this.cmds[cmd].call(self, m[2] || '', resp_func);
+  this.cmds[cmd].fn.call(self, m[2] || '', resp_func);
   return true;
 };
 
-CmdParse.prototype.register = function (cmd, func) {
-  this.cmds[canonical(cmd)] = func;
+CmdParse.prototype.register = function (param) {
+  assert.equal(typeof param, 'object');
+  let { cmd, func, help } = param;
+  assert(cmd && func);
+  this.cmds[canonical(cmd)] = {
+    name: cmd,
+    fn: func,
+    help: help || '',
+  };
 };
 
 CmdParse.prototype.registerValue = function (cmd, param) {
@@ -66,7 +73,7 @@ CmdParse.prototype.registerValue = function (cmd, param) {
       param.set(init_value);
     }
   }
-  this.cmds[canonical(cmd)] = (str, resp_func) => {
+  let fn = (str, resp_func) => {
     function value() {
       resp_func(null, `${label} = ${param.get()}`);
     }
@@ -115,7 +122,39 @@ CmdParse.prototype.registerValue = function (cmd, param) {
       return resp_func(null, `${label} udpated`);
     }
   };
+  this.cmds[canonical(cmd)] = {
+    name: cmd,
+    fn,
+    help: (param.get && param.set) ?
+      `Set or display "${label}" value` :
+      param.set ? `Set "${label}" value` : `Display "${label}" value`
+  };
 };
+
+function cmpCmd(a, b) {
+  if (a.cname < b.cname) {
+    return -1;
+  }
+  return 1;
+}
+
+CmdParse.prototype.autoComplete = function (str) {
+  let list = [];
+  let first_tok = canonical(str.split(' ')[0]);
+  for (let cname in this.cmds) {
+    if (cname.slice(0, first_tok.length) === first_tok) {
+      list.push({
+        cname,
+        cmd: this.cmds[cname].name,
+        help: this.cmds[cname].help,
+      });
+    }
+  }
+  list.sort(cmpCmd);
+  return list; // .slice(0, 20); Maybe?
+};
+
+CmdParse.prototype.canonical = canonical;
 
 CmdParse.prototype.TYPE_INT = TYPE_INT;
 CmdParse.prototype.TYPE_FLOAT = TYPE_FLOAT;

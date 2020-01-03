@@ -10,6 +10,7 @@ const local_storage = require('./glov/local_storage.js');
 const net = require('./glov/net.js');
 const ui = require('./glov/ui.js');
 const { clamp } = require('../common/util.js');
+const { vec4 } = require('./glov/vmath.js');
 
 const FADE_START_TIME = 10000;
 const FADE_TIME = 1000;
@@ -204,6 +205,64 @@ function conciseDate(dt) {
   return `${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())} ${pad2(dt.getHours())
   }:${pad2(dt.getMinutes())}:${pad2(dt.getSeconds())}`;
 }
+let help_font_style = glov_font.styleColored(null, 0x000000ff);
+let help_font_style_cmd = glov_font.style(help_font_style, {
+  outline_width: 0.5,
+  outline_color: 0x000000FF,
+});
+let help_rollover_color = vec4(0, 0, 0, 0.25);
+let help_rollover_color2 = vec4(0, 0, 0, 0.125);
+function drawHelpTooltip(param) {
+  assert(Array.isArray(param.tooltip));
+  let w = param.tooltip_width;
+  let h = ui.font_height;
+  let x = param.x;
+  let z = param.z || Z.TOOLTIP;
+  let eff_tooltip_pad = ui.tooltip_pad * 0.5;
+  let text_x = x + eff_tooltip_pad;
+  let text_w = w - eff_tooltip_pad * 2;
+  let tooltip_y1 = param.y;
+  let y = tooltip_y1 - eff_tooltip_pad;
+  let ret = null;
+  for (let ii = 0; ii < param.tooltip.length; ++ii) {
+    let line = param.tooltip[ii];
+    y -= h;
+    let idx = line.indexOf(' ');
+    if (line[0] === '/' && idx !== -1 && param.do_selection) {
+      // is a command
+      let cmd = line.slice(0, idx);
+      let help = line.slice(idx);
+      let cmd_w = ui.font.drawSized(help_font_style_cmd,
+        text_x, y, z+1, h, cmd);
+      ui.font.drawSizedAligned(help_font_style,
+        text_x + cmd_w, y, z+1, h, glov_font.ALIGN.HFIT,
+        text_w - cmd_w, 0,
+        help);
+      let pos = { x, y, w, h };
+      if (input.mouseUpEdge(pos)) { // up instead of down to prevent canvas capturing focus
+        ret = cmd.slice(1);
+      } else if (input.mouseOver(pos)) {
+        ui.drawRect(x, y, text_x + cmd_w + 4, y + h, z + 0.5, help_rollover_color);
+        ui.drawRect(text_x + cmd_w + 4, y, x + w, y + h, z + 0.5, help_rollover_color2);
+      }
+    } else {
+      ui.font.drawSizedAligned(help_font_style,
+        text_x, y, z+1, h, glov_font.ALIGN.HFIT,
+        text_w, 0,
+        line);
+    }
+  }
+  y -= eff_tooltip_pad;
+  let pixel_scale = ui.tooltip_panel_pixel_scale * 0.5;
+
+  ui.panel({
+    x, y, z, w,
+    h: tooltip_y1 - y,
+    pixel_scale,
+  });
+  return ret;
+}
+
 
 ChatUI.prototype.run = function (opts) {
   opts = opts || {};
@@ -238,7 +297,42 @@ ChatUI.prototype.run = function (opts) {
     } else {
       if (was_focused) {
         let cur_text = this.edit_text_entry.getText();
-        if (!cur_text) {
+        if (cur_text) {
+          if (cur_text[0] === '/') {
+            // do auto-complete
+            let autocomplete = cmd_parse.autoComplete(cur_text.slice(1));
+            if (autocomplete && autocomplete.length) {
+              let first = autocomplete[0];
+              let auto_text = [];
+              for (let ii = 0; ii < autocomplete.length; ++ii) {
+                let elem = autocomplete[ii];
+                auto_text.push(`/${elem.cmd} - ${elem.help}`);
+              }
+              let do_selection = false;
+              if (first.cname &&
+                cmd_parse.canonical(cur_text.slice(1)).slice(0, first.cname.length) === first.cname
+              ) {
+                // we've typed something that matches the first one
+                auto_text = [first.help];
+              } else {
+                do_selection = true;
+              }
+              let selected = drawHelpTooltip({
+                x, y,
+                tooltip_width: w,
+                tooltip: auto_text,
+                do_selection,
+              });
+              if (do_selection) {
+                // auto-completes to something different than we have typed
+                if (input.keyDownEdge(input.KEYS.TAB) || input.keyDownEdge(input.KEYS.ENTER) || selected) {
+                  this.edit_text_entry.setText(`/${selected || first.cmd} `);
+                  this.edit_text_entry.focus();
+                }
+              }
+            }
+          }
+        } else {
           this.history.resetPos();
         }
         if (input.keyDownEdge(input.KEYS.UP)) {

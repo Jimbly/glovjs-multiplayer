@@ -102,10 +102,15 @@ let user_worker = DefaultUserWorker;
 let user_worker_init_data = {
   autocreate: true,
   subid_regex: regex_valid_username,
-  cmds: {
-    rename: DefaultUserWorker.prototype.cmdRename,
-    rename_random: DefaultUserWorker.prototype.cmdRenameRandom,
-  },
+  cmds: [{
+    cmd: 'rename',
+    help: 'Change display name',
+    func: DefaultUserWorker.prototype.cmdRename
+  },{
+    cmd: 'rename_random',
+    help: 'Change display name to something random',
+    func: DefaultUserWorker.prototype.cmdRenameRandom,
+  }],
   handlers: {
     login: DefaultUserWorker.prototype.handleLogin,
     create: DefaultUserWorker.prototype.handleCreate,

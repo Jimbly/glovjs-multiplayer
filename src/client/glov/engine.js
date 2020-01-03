@@ -355,7 +355,7 @@ export function start3DRendering() {
   setupProjection(fov_y, width, height, ZNEAR, ZFAR);
 
   gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // eslint-disable-line no-bitwise
   gl.enable(gl.CULL_FACE);
 }
 
