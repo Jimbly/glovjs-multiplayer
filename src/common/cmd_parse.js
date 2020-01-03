@@ -21,12 +21,57 @@ export function defaultHandler(err, resp) {
   }
 }
 
+function checkAccess(access, list) {
+  if (list) {
+    for (let ii = 0; ii < list.length; ++ii) {
+      if (!access || !access[list[ii]]) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function CmdParse(params) {
   this.cmds = {};
+  this.cmds_for_complete = this.cmds;
   this.was_not_found = false;
   this.storage = params && params.storage; // expects .setJSON(), .getJSON()
   this.default_handler = defaultHandler;
+  this.register({
+    cmd: 'cmd_list',
+    func: this.cmdList.bind(this),
+    access_show: ['hidden'],
+  });
 }
+CmdParse.prototype.cmdList = function (str, resp_func) {
+  if (!this.cmd_list) {
+    let list = this.cmd_list = {};
+    for (let cmd in this.cmds) {
+      let cmd_data = this.cmds[cmd];
+      let access = []; // combine for data compaction
+      if (cmd_data.access_show) {
+        access = access.concat(cmd_data.access_show);
+      }
+      if (cmd_data.access_run) {
+        access = access.concat(cmd_data.access_run);
+      }
+      if (access.indexOf('hidden') !== -1) {
+        continue;
+      }
+      let data = {
+        name: cmd_data.name,
+        help: cmd_data.help,
+      };
+      if (access.length) {
+        data.access_show = access;
+      }
+      list[cmd] = data;
+    }
+  }
+  resp_func(null, this.cmd_list);
+};
+
 CmdParse.prototype.setDefaultHandler = function (fn) {
   assert(this.default_handler === defaultHandler); // Should only set this once
   this.default_handler = fn;
@@ -40,23 +85,31 @@ CmdParse.prototype.handle = function (self, str, resp_func) {
     return true;
   }
   let cmd = canonical(m[1]);
-  if (!this.cmds[cmd]) {
+  let cmd_data = this.cmds[cmd];
+  if (cmd_data && !checkAccess(self && self.access, cmd_data.access_run)) {
+    // this.was_not_found = true;
+    resp_func(`Access denied: "${m[1]}"`);
+    return false;
+  }
+  if (!cmd_data) {
     this.was_not_found = true;
     resp_func(`Unknown command: "${m[1]}"`);
     return false;
   }
-  this.cmds[cmd].fn.call(self, m[2] || '', resp_func);
+  cmd_data.fn.call(self, m[2] || '', resp_func);
   return true;
 };
 
 CmdParse.prototype.register = function (param) {
   assert.equal(typeof param, 'object');
-  let { cmd, func, help } = param;
+  let { cmd, func, help, access_show, access_run } = param;
   assert(cmd && func);
   this.cmds[canonical(cmd)] = {
     name: cmd,
     fn: func,
     help: help || '',
+    access_show,
+    access_run,
   };
 };
 
@@ -122,13 +175,15 @@ CmdParse.prototype.registerValue = function (cmd, param) {
       return resp_func(null, `${label} udpated`);
     }
   };
-  this.cmds[canonical(cmd)] = {
-    name: cmd,
-    fn,
+  this.register({
+    cmd,
+    func: fn,
     help: (param.get && param.set) ?
       `Set or display "${label}" value` :
-      param.set ? `Set "${label}" value` : `Display "${label}" value`
-  };
+      param.set ? `Set "${label}" value` : `Display "${label}" value`,
+    access_show: param.access_show,
+    access_run: param.access_run,
+  });
 };
 
 function cmpCmd(a, b) {
@@ -138,16 +193,35 @@ function cmpCmd(a, b) {
   return 1;
 }
 
-CmdParse.prototype.autoComplete = function (str) {
+// for auto-complete
+CmdParse.prototype.addServerCommands = function (new_cmds) {
+  let cmds = this.cmds_for_complete;
+  if (this.cmds_for_complete === this.cmds) {
+    cmds = this.cmds_for_complete = {};
+    for (let cname in this.cmds) {
+      cmds[cname] = this.cmds[cname];
+    }
+  }
+  for (let cname in new_cmds) {
+    if (!cmds[cname]) {
+      cmds[cname] = new_cmds[cname];
+    }
+  }
+};
+
+CmdParse.prototype.autoComplete = function (str, access) {
   let list = [];
   let first_tok = canonical(str.split(' ')[0]);
-  for (let cname in this.cmds) {
+  for (let cname in this.cmds_for_complete) {
     if (cname.slice(0, first_tok.length) === first_tok) {
-      list.push({
-        cname,
-        cmd: this.cmds[cname].name,
-        help: this.cmds[cname].help,
-      });
+      let cmd_data = this.cmds_for_complete[cname];
+      if (checkAccess(access, cmd_data.access_show) && checkAccess(access, cmd_data.access_run)) {
+        list.push({
+          cname,
+          cmd: cmd_data.name,
+          help: cmd_data.help,
+        });
+      }
     }
   }
   list.sort(cmpCmd);

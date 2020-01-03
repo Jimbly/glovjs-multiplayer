@@ -318,6 +318,7 @@ export class ChannelWorker {
 
   onCmdParse(source, data, resp_func) {
     this.cmd_parse_source = source;
+    this.access = source; // for cmd_parse access checking rules
     this.cmd_parse.handle(this, data, (err, resp) => {
       if (err && this.cmd_parse.was_not_found) {
         return resp_func(null, { found: 0, err });

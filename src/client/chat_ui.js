@@ -115,6 +115,7 @@ function ChatUI(max_len) {
   this.max_messages = 8;
   this.max_len = max_len;
   this.history = new CmdHistory();
+  this.access_obj = null; // object with .access for testing cmd access permissions
 
   this.styles = {
     def: glov_font.style(null, {
@@ -175,6 +176,10 @@ ChatUI.prototype.handleCmdParse = function (err, resp) {
   }
 };
 
+ChatUI.prototype.setAccessOjb = function (obj) {
+  this.access_obj = obj;
+};
+
 ChatUI.prototype.cmdParse = function (str, on_error) {
   let handleResult = on_error ?
     (err, resp) => {
@@ -184,7 +189,7 @@ ChatUI.prototype.cmdParse = function (str, on_error) {
       }
     } :
     this.handle_cmd_parse;
-  cmd_parse.handle(null, str, function (err, resp) {
+  cmd_parse.handle(this.access_obj, str, function (err, resp) {
     if (err && cmd_parse.was_not_found) {
       // forward to server
       net.subs.sendCmdParse(str, handleResult);
@@ -195,7 +200,7 @@ ChatUI.prototype.cmdParse = function (str, on_error) {
 };
 
 ChatUI.prototype.cmdParseInternal = function (str) {
-  cmd_parse.handle(null, str, this.handle_cmd_parse_error);
+  cmd_parse.handle(this.access_obj, str, this.handle_cmd_parse_error);
 };
 
 function pad2(str) {
@@ -263,7 +268,18 @@ function drawHelpTooltip(param) {
   return ret;
 }
 
+function getNumLines(w, indent, line) {
+  let numlines = 0;
+  function wordCallback(ignored, linenum, word) {
+    numlines = Math.max(numlines, linenum);
+  }
+  ui.font.wrapLines(w, indent, ui.font_height, line, wordCallback);
+  return numlines + 1;
+}
 
+
+const indent = 80;
+const SPACE_ABOVE_ENTRY = 8;
 ChatUI.prototype.run = function (opts) {
   opts = opts || {};
   if (net.client.disconnected) {
@@ -317,15 +333,27 @@ ChatUI.prototype.run = function (opts) {
               } else {
                 do_selection = true;
               }
+              let tooltip_y = y;
+              // check if last message is an error, if so, tooltip above that.
+              let last_msg = this.msgs[this.msgs.length - 1];
+              if (last_msg) {
+                let msg = last_msg.msg;
+                if (msg && msg.slice(0, 7) === '[error]') {
+                  let numlines = getNumLines(w, indent, msg);
+                  tooltip_y -= ui.font_height * numlines + SPACE_ABOVE_ENTRY;
+                }
+              }
+
               let selected = drawHelpTooltip({
-                x, y,
+                x, y: tooltip_y,
                 tooltip_width: w,
                 tooltip: auto_text,
                 do_selection,
               });
               if (do_selection) {
                 // auto-completes to something different than we have typed
-                if (input.keyDownEdge(input.KEYS.TAB) || input.keyDownEdge(input.KEYS.ENTER) || selected) {
+                // Do not use ENTER as well, because sometimes a hidden command is a sub-string of a shown command?
+                if (input.keyDownEdge(input.KEYS.TAB) || selected) {
                   this.edit_text_entry.setText(`/${selected || first.cmd} `);
                   this.edit_text_entry.focus();
                 }
@@ -389,12 +417,7 @@ ChatUI.prototype.run = function (opts) {
       }
     }
   }
-  y -= 8;
-  let numlines;
-  let indent = 80;
-  function wordCallback(ignored, linenum, word) {
-    numlines = Math.max(numlines, linenum);
-  }
+  y -= SPACE_ABOVE_ENTRY;
   let now = Date.now();
   for (let ii = 0; ii < Math.min(this.msgs.length, this.max_messages); ++ii) {
     let msg = this.msgs[this.msgs.length - ii - 1];
@@ -405,9 +428,8 @@ ChatUI.prototype.run = function (opts) {
     }
     let style = this.styles[msg.style || 'def'];
     let line = msg.msg;
-    numlines = 0;
-    ui.font.wrapLines(w, indent, ui.font_height, line, wordCallback);
-    let h = ui.font_height * (numlines + 1);
+    let numlines = getNumLines(w, indent, line);
+    let h = ui.font_height * numlines;
     y -= h;
     ui.font.drawSizedWrapped(glov_font.styleAlpha(style, alpha), x, y, Z.CHAT + 1, w, indent, ui.font_height, line);
     if (input.mouseOver({ x, y, w, h }) && !input.mousePosIsTouch()) {
