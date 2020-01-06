@@ -63,6 +63,9 @@ CmdParse.prototype.cmdList = function (str, resp_func) {
         name: cmd_data.name,
         help: cmd_data.help,
       };
+      if (cmd_data.usage) {
+        data.usage = cmd_data.usage;
+      }
       if (access.length) {
         data.access_show = access;
       }
@@ -102,12 +105,13 @@ CmdParse.prototype.handle = function (self, str, resp_func) {
 
 CmdParse.prototype.register = function (param) {
   assert.equal(typeof param, 'object');
-  let { cmd, func, help, access_show, access_run } = param;
+  let { cmd, func, help, usage, access_show, access_run } = param;
   assert(cmd && func);
   this.cmds[canonical(cmd)] = {
     name: cmd,
     fn: func,
     help: help || '',
+    usage: usage || undefined,
     access_show,
     access_run,
   };
@@ -181,6 +185,8 @@ CmdParse.prototype.registerValue = function (cmd, param) {
     help: (param.get && param.set) ?
       `Set or display "${label}" value` :
       param.set ? `Set "${label}" value` : `Display "${label}" value`,
+    usage: (param.get ? `Display "${label}" value\n  Usage: /${cmd}\n` : '') +
+      (param.set ? `Set "${label}" value\n  Usage: /${cmd} NewValue` : ''),
     access_show: param.access_show,
     access_run: param.access_run,
   });
@@ -211,15 +217,19 @@ CmdParse.prototype.addServerCommands = function (new_cmds) {
 
 CmdParse.prototype.autoComplete = function (str, access) {
   let list = [];
-  let first_tok = canonical(str.split(' ')[0]);
+  str = str.split(' ');
+  let first_tok = canonical(str[0]);
   for (let cname in this.cmds_for_complete) {
-    if (cname.slice(0, first_tok.length) === first_tok) {
+    if (str.length === 1 && cname.slice(0, first_tok.length) === first_tok ||
+      str.length > 1 && cname === first_tok
+    ) {
       let cmd_data = this.cmds_for_complete[cname];
       if (checkAccess(access, cmd_data.access_show) && checkAccess(access, cmd_data.access_run)) {
         list.push({
           cname,
           cmd: cmd_data.name,
           help: cmd_data.help,
+          usage: cmd_data.usage,
         });
       }
     }

@@ -229,7 +229,7 @@ function drawHelpTooltip(param) {
   let tooltip_y1 = param.y;
   let y = tooltip_y1 - eff_tooltip_pad;
   let ret = null;
-  for (let ii = 0; ii < param.tooltip.length; ++ii) {
+  for (let ii = param.tooltip.length - 1; ii >= 0; --ii) {
     let line = param.tooltip[ii];
     y -= h;
     let idx = line.indexOf(' ');
@@ -324,12 +324,17 @@ ChatUI.prototype.run = function (opts) {
                 let elem = autocomplete[ii];
                 auto_text.push(`/${elem.cmd} - ${elem.help}`);
               }
-              let do_selection = false;
-              if (first.cname &&
+              let do_selection = false; // should we allow clicking in the tooltip?
+              if (autocomplete.length === 1 &&
+                first.cname &&
                 cmd_parse.canonical(cur_text.slice(1)).slice(0, first.cname.length) === first.cname
               ) {
                 // we've typed something that matches the first one
-                auto_text = [first.help];
+                if (first.usage) {
+                  auto_text = first.usage.split('\n');
+                } else {
+                  auto_text = [first.help];
+                }
               } else {
                 do_selection = true;
               }

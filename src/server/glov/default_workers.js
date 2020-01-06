@@ -105,6 +105,7 @@ let user_worker_init_data = {
   cmds: [{
     cmd: 'rename',
     help: 'Change display name',
+    usage: 'Changes your name as seen by others, your user name (login) remains the same.\n  Usage: /rename New Name',
     func: DefaultUserWorker.prototype.cmdRename,
   },{
     cmd: 'rename_random',
