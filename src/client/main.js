@@ -1,10 +1,11 @@
 /*eslint global-require:off*/
+const local_storage = require('./glov/local_storage.js');
+local_storage.storage_prefix = 'glovjs-multiplayer'; // Before requiring anything else that might load from this
 
 const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const fs = require('fs');
 const input = require('./glov/input.js');
-const local_storage = require('./glov/local_storage.js');
 const { atan2, random } = Math;
 const net = require('./glov/net.js');
 const net_position_manager = require('./glov/net_position_manager.js');
@@ -16,7 +17,6 @@ const ui = require('./glov/ui.js');
 
 const particle_data = require('./particle_data.js');
 const { vec2, vec3, v2sub, vec4, v4copy } = require('./glov/vmath.js');
-local_storage.storage_prefix = 'glovjs-multiplayer';
 
 window.Z = window.Z || {};
 Z.BACKGROUND = 0;
