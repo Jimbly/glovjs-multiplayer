@@ -12,8 +12,8 @@ const ui = require('./glov/ui.js');
 const { clamp } = require('../common/util.js');
 const { vec4 } = require('./glov/vmath.js');
 
-const FADE_START_TIME = 10000;
-const FADE_TIME = 1000;
+const FADE_START_TIME = [10000, 1000];
+const FADE_TIME = [1000, 500];
 
 function CmdHistory() {
   assert(local_storage.storage_prefix !== 'demo'); // wrong initialization order
@@ -304,7 +304,13 @@ ChatUI.prototype.run = function (opts) {
   let w = engine.game_width / 2;
   let is_focused = false;
   let font_height = ui.font_height;
-  if (net.subs.loggedIn() && !(ui.modal_dialog || ui.menu_up || opts.hide)) {
+  let anything_visible = false;
+  let hide_light =
+    (opts.hide || engine.defines.NOUI) && (!this.edit_text_entry || !this.edit_text_entry.isFocused()) ?
+      1 :
+      0;
+  if (net.subs.loggedIn() && !(ui.modal_dialog || ui.menu_up || hide_light)) {
+    anything_visible = true;
     let was_focused = this.edit_text_entry.isFocused();
     if (was_focused && input.touch_mode) {
       // expand chat when focused on touch devices
@@ -318,6 +324,7 @@ ChatUI.prototype.run = function (opts) {
         '<Press Enter to chat>');
     } else {
       if (was_focused) {
+        // Do auto-complete logic *before* edit box, so we can eat TAB without changing focus
         let cur_text = this.edit_text_entry.getText();
         if (cur_text) {
           if (cur_text[0] === '/') {
@@ -434,7 +441,7 @@ ChatUI.prototype.run = function (opts) {
   for (let ii = 0; ii < Math.min(this.msgs.length, this.max_messages); ++ii) {
     let msg = this.msgs[this.msgs.length - ii - 1];
     let age = now - msg.timestamp;
-    let alpha = is_focused ? 1 : 1 - clamp((age - FADE_START_TIME) / FADE_TIME, 0, 1);
+    let alpha = is_focused ? 1 : 1 - clamp((age - FADE_START_TIME[hide_light]) / FADE_TIME[hide_light], 0, 1);
     if (!alpha) {
       break;
     }
@@ -453,8 +460,12 @@ ChatUI.prototype.run = function (opts) {
         pixel_scale: ui.tooltip_panel_pixel_scale * 0.5,
       });
     }
+    anything_visible = true;
   }
 
+  if (!anything_visible && (ui.modal_dialog || ui.menu_up || opts.hide || engine.defines.NOUI)) {
+    return;
+  }
   let border = 8;
   ui.drawRect(camera2d.x0(), y - border, x + w + border + 8, y0, Z.CHAT, [0.3,0.3,0.3,0.75]);
 };
