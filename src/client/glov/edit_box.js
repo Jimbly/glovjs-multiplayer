@@ -176,8 +176,10 @@ class GlovUIEditBox {
       elem.style.top = `${pos[1]}%`;
       let size = camera2d.htmlSize(this.w, this.h);
       elem.style.width = `${size[0]}%`;
-      if (this.font_height !== glov_ui.font_height) {
-        elem.style.fontSize = `${(this.font_height / glov_ui.font_height).toFixed(2)}em`;
+      let old_fontsize = elem.style.fontSize || '1.00em';
+      let new_fontsize = `${(this.font_height / glov_ui.font_height).toFixed(2)}em`;
+      if (new_fontsize !== old_fontsize) {
+        elem.style.fontSize = new_fontsize;
       }
     }
 
