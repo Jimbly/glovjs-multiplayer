@@ -220,7 +220,7 @@ let help_rollover_color2 = vec4(0, 0, 0, 0.125);
 function drawHelpTooltip(param) {
   assert(Array.isArray(param.tooltip));
   let w = param.tooltip_width;
-  let h = ui.font_height;
+  let h = param.font_height;
   let x = param.x;
   let z = param.z || Z.TOOLTIP;
   let eff_tooltip_pad = ui.tooltip_pad * 0.5;
@@ -268,12 +268,12 @@ function drawHelpTooltip(param) {
   return ret;
 }
 
-function getNumLines(w, indent, line) {
+function getNumLines(w, indent, font_height, line) {
   let numlines = 0;
   function wordCallback(ignored, linenum, word) {
     numlines = Math.max(numlines, linenum);
   }
-  ui.font.wrapLines(w, indent, ui.font_height, line, wordCallback);
+  ui.font.wrapLines(w, indent, font_height, line, wordCallback);
   return numlines + 1;
 }
 
@@ -303,12 +303,18 @@ ChatUI.prototype.run = function (opts) {
   let y = y0;
   let w = engine.game_width / 2;
   let is_focused = false;
+  let font_height = ui.font_height;
   if (net.subs.loggedIn() && !(ui.modal_dialog || ui.menu_up || opts.hide)) {
     let was_focused = this.edit_text_entry.isFocused();
-    y -= 40;
+    if (was_focused && input.touch_mode) {
+      // expand chat when focused on touch devices
+      w = camera2d.x1() - x - 24;
+      font_height *= 4;
+    }
+    y -= font_height + 16; // or, font_height * (40/24) ?
     if (!was_focused && opts.pointerlock && input.pointerLocked()) {
       // do not show edit box
-      ui.font.drawSizedAligned(this.styles.def, x, y, Z.CHAT + 1, ui.font_height, glov_font.ALIGN.HFIT, w, 0,
+      ui.font.drawSizedAligned(this.styles.def, x, y, Z.CHAT + 1, font_height, glov_font.ALIGN.HFIT, w, 0,
         '<Press Enter to chat>');
     } else {
       if (was_focused) {
@@ -344,8 +350,8 @@ ChatUI.prototype.run = function (opts) {
               if (last_msg) {
                 let msg = last_msg.msg;
                 if (msg && msg.slice(0, 7) === '[error]') {
-                  let numlines = getNumLines(w, indent, msg);
-                  tooltip_y -= ui.font_height * numlines + SPACE_ABOVE_ENTRY;
+                  let numlines = getNumLines(w, indent, font_height, msg);
+                  tooltip_y -= font_height * numlines + SPACE_ABOVE_ENTRY;
                 }
               }
 
@@ -354,6 +360,7 @@ ChatUI.prototype.run = function (opts) {
                 tooltip_width: w,
                 tooltip: auto_text,
                 do_selection,
+                font_height,
               });
               if (do_selection) {
                 // auto-completes to something different than we have typed
@@ -375,7 +382,7 @@ ChatUI.prototype.run = function (opts) {
           this.edit_text_entry.setText(this.history.next(cur_text));
         }
       }
-      let res = this.edit_text_entry.run({ x, y, w, pointer_lock: opts.pointerlock });
+      let res = this.edit_text_entry.run({ x, y, w, font_height, pointer_lock: opts.pointerlock });
       is_focused = this.edit_text_entry.isFocused();
       if (res === this.edit_text_entry.SUBMIT) {
         let text = this.edit_text_entry.getText();
@@ -433,10 +440,10 @@ ChatUI.prototype.run = function (opts) {
     }
     let style = this.styles[msg.style || 'def'];
     let line = msg.msg;
-    let numlines = getNumLines(w, indent, line);
-    let h = ui.font_height * numlines;
+    let numlines = getNumLines(w, indent, font_height, line);
+    let h = font_height * numlines;
     y -= h;
-    ui.font.drawSizedWrapped(glov_font.styleAlpha(style, alpha), x, y, Z.CHAT + 1, w, indent, ui.font_height, line);
+    ui.font.drawSizedWrapped(glov_font.styleAlpha(style, alpha), x, y, Z.CHAT + 1, w, indent, font_height, line);
     if (input.mouseOver({ x, y, w, h }) && !input.mousePosIsTouch()) {
       ui.drawTooltip({
         x, y: y - 50,
