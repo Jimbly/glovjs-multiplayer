@@ -114,6 +114,7 @@ ClientChannelWorker.prototype.send = function (msg, data, opts, resp_func) {
     channel_id: this.channel_id,
     msg, data,
     broadcast: opts && opts.broadcast || undefined,
+    silent_error: opts && opts.silent_error,
   }, resp_func);
 };
 
@@ -255,7 +256,7 @@ SubscriptionManager.prototype.getChannel = function (channel_id, do_subscribe) {
     channel.subscriptions++;
     if (this.client.connected && channel.subscriptions === 1) {
       channel.subscribe_failed = false;
-      this.client.send('subscribe', channel_id, (err) => {
+      this.client.send('subscribe', channel_id, function (err) {
         if (err) {
           channel.subscribe_failed = true;
           console.error(`Error subscribing to ${channel_id}: ${err}`);
@@ -458,7 +459,7 @@ SubscriptionManager.prototype.sendCmdParse = function (command, resp_func) {
     if (!channel_id) {
       return resp_func(last_error);
     }
-    return channel.send('cmdparse', command, {},
+    return channel.send('cmdparse', command, { silent_error: 1 },
       function (err, resp) {
         if (err || resp && resp.found) {
           return resp_func(err, resp ? resp.resp : null);
