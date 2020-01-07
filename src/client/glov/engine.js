@@ -460,7 +460,10 @@ function tick(timestamp) {
     let view_height = viewport2[3] - viewport2[1];
     // default font size of 16 when at height of game_height
     let font_size = min(256, max(2, floor(view_height/800 * 16)));
-    document.getElementById('fullscreen').style['font-size'] = `${font_size}px`;
+    let elem_fullscreen = document.getElementById('fullscreen');
+    if (elem_fullscreen) {
+      elem_fullscreen.style['font-size'] = `${font_size}px`;
+    }
   }
 
   if (do_borders) {
@@ -744,13 +747,19 @@ export function loadsPending() {
 
 function loading() {
   let load_count = loadsPending();
-  document.getElementById('loading_text').innerText = `Loading (${load_count})...`;
+  let elem_loading_text = document.getElementById('loading_text');
+  if (elem_loading_text) {
+    elem_loading_text.innerText = `Loading (${load_count})...`;
+  }
   if (!load_count) {
     is_loading = false;
     app_state = after_loading_state;
     // Clear after next frame, so something is rendered to the canvas
     postTick(2, function () {
-      document.getElementById('loading').style.visibility = 'hidden';
+      let loading_elem = document.getElementById('loading');
+      if (loading_elem) {
+        loading_elem.style.visibility = 'hidden';
+      }
     });
   }
 }
