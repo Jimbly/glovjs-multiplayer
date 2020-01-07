@@ -348,11 +348,11 @@ ChatUI.prototype.run = function (opts) {
   let is_focused = false;
   let font_height = ui.font_height;
   let anything_visible = false;
-  let hide_light =
-    (opts.hide || engine.defines.NOUI) && (!this.edit_text_entry || !this.edit_text_entry.isFocused()) ?
-      1 :
-      0;
-  if (net.subs.loggedIn() && !(ui.modal_dialog || ui.menu_up || hide_light)) {
+  let hide_light = (opts.hide || engine.defines.NOUI || !net.subs.loggedIn()) &&
+    !(this.edit_text_entry && this.edit_text_entry.isFocused()) ?
+    1 : // must be numerical, used to index fade values
+    0;
+  if (!(ui.modal_dialog || ui.menu_up || hide_light)) {
     anything_visible = true;
     let was_focused = this.edit_text_entry.isFocused();
     if (was_focused && input.touch_mode) {
@@ -454,7 +454,11 @@ ChatUI.prototype.run = function (opts) {
               }
             });
           } else {
-            if (text.length > this.max_len) {
+            if (!net.client.connected) {
+              this.addChat('[error] Cannot chat: Disconnected');
+            } else if (!this.channel || !net.subs.loggedIn()) {
+              this.addChat('[error] Cannot chat: Must be logged in');
+            } else if (text.length > this.max_len) {
               this.addChat('[error] Chat message too long');
             } else {
               this.channel.send('chat', { msg: text }, { broadcast: true }, (err) => {
@@ -510,7 +514,7 @@ ChatUI.prototype.run = function (opts) {
     anything_visible = true;
   }
 
-  if (!anything_visible && (ui.modal_dialog || ui.menu_up || opts.hide || engine.defines.NOUI)) {
+  if (!anything_visible && (ui.modal_dialog || ui.menu_up || hide_light)) {
     return;
   }
   let border = 8;
