@@ -7,6 +7,7 @@ const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const input = require('./glov/input.js');
 const local_storage = require('./glov/local_storage.js');
+const { ceil, max } = Math;
 const net = require('./glov/net.js');
 const ui = require('./glov/ui.js');
 const { clamp } = require('../common/util.js');
@@ -115,7 +116,7 @@ function ChatUI(max_len) {
   this.max_messages = 8;
   this.max_len = max_len;
   this.history = new CmdHistory();
-  this.access_obj = null; // object with .access for testing cmd access permissions
+  this.get_roles = null; // returns object for testing cmd access permissions
 
   this.styles = {
     def: glov_font.style(null, {
@@ -176,8 +177,17 @@ ChatUI.prototype.handleCmdParse = function (err, resp) {
   }
 };
 
-ChatUI.prototype.setAccessOjb = function (obj) {
-  this.access_obj = obj;
+ChatUI.prototype.setGetRoles = function (fn) {
+  this.get_roles = fn;
+};
+
+let access_dummy = { access: null };
+ChatUI.prototype.getAccessObj = function () {
+  if (!this.get_roles) {
+    return {};
+  }
+  access_dummy.access = this.get_roles();
+  return access_dummy;
 };
 
 ChatUI.prototype.cmdParse = function (str, on_error) {
@@ -189,7 +199,7 @@ ChatUI.prototype.cmdParse = function (str, on_error) {
       }
     } :
     this.handle_cmd_parse;
-  cmd_parse.handle(this.access_obj, str, function (err, resp) {
+  cmd_parse.handle(this.getAccessObj(), str, function (err, resp) {
     if (err && cmd_parse.was_not_found) {
       // forward to server
       net.subs.sendCmdParse(str, handleResult);
@@ -200,7 +210,7 @@ ChatUI.prototype.cmdParse = function (str, on_error) {
 };
 
 ChatUI.prototype.cmdParseInternal = function (str) {
-  cmd_parse.handle(this.access_obj, str, this.handle_cmd_parse_error);
+  cmd_parse.handle(this.getAccessObj(), str, this.handle_cmd_parse_error);
 };
 
 function pad2(str) {
@@ -217,8 +227,25 @@ let help_font_style_cmd = glov_font.style(help_font_style, {
 });
 let help_rollover_color = vec4(0, 0, 0, 0.25);
 let help_rollover_color2 = vec4(0, 0, 0, 0.125);
+const TOOLTIP_PAGE_SIZE = 20;
+let tooltip_page = 0;
+let tooltip_last = '';
 function drawHelpTooltip(param) {
   assert(Array.isArray(param.tooltip));
+  let tooltip = param.tooltip;
+  let num_pages = 1;
+  if (tooltip.length > 20) {
+    let text = tooltip.join('\n');
+    if (text !== tooltip_last) {
+      tooltip_page = 0;
+      tooltip_last = text;
+    }
+    num_pages = ceil(tooltip.length / TOOLTIP_PAGE_SIZE);
+    tooltip = tooltip.slice(tooltip_page * TOOLTIP_PAGE_SIZE, (tooltip_page + 1) * TOOLTIP_PAGE_SIZE);
+  } else {
+    tooltip_page = 0;
+    tooltip_last = '';
+  }
   let w = param.tooltip_width;
   let h = param.font_height;
   let x = param.x;
@@ -229,8 +256,21 @@ function drawHelpTooltip(param) {
   let tooltip_y1 = param.y;
   let y = tooltip_y1 - eff_tooltip_pad;
   let ret = null;
-  for (let ii = param.tooltip.length - 1; ii >= 0; --ii) {
-    let line = param.tooltip[ii];
+  if (num_pages > 1) {
+    y -= h;
+    ui.font.drawSizedAligned(help_font_style,
+      text_x, y, z+1, h, glov_font.ALIGN.HCENTER,
+      text_w, 0,
+      `Page ${tooltip_page + 1} / ${num_pages}`);
+    let pos = { x, y, w, h };
+    if (input.mouseUpEdge(pos)) { // up instead of down to prevent canvas capturing focus
+      tooltip_page = (tooltip_page + 1) % num_pages;
+    } else if (input.mouseOver(pos)) {
+      ui.drawRect(x, y, x + w, y + h, z + 0.5, help_rollover_color);
+    }
+  }
+  for (let ii = tooltip.length - 1; ii >= 0; --ii) {
+    let line = tooltip[ii];
     y -= h;
     let idx = line.indexOf(' ');
     if (line[0] === '/' && idx !== -1 && param.do_selection) {
@@ -277,6 +317,9 @@ function getNumLines(w, indent, font_height, line) {
   return numlines + 1;
 }
 
+ChatUI.prototype.isFocused = function () {
+  return this.edit_text_entry && this.edit_text_entry.isFocused();
+};
 
 const indent = 80;
 const SPACE_ABOVE_ENTRY = 8;
@@ -325,11 +368,16 @@ ChatUI.prototype.run = function (opts) {
     } else {
       if (was_focused) {
         // Do auto-complete logic *before* edit box, so we can eat TAB without changing focus
+        // Eat tab even if there's nothing to complete, for consistency
+        let pressed_tab = input.keyDownEdge(input.KEYS.TAB);
+        if (pressed_tab) {
+          this.edit_text_entry.focus();
+        }
         let cur_text = this.edit_text_entry.getText();
         if (cur_text) {
           if (cur_text[0] === '/') {
             // do auto-complete
-            let autocomplete = cmd_parse.autoComplete(cur_text.slice(1));
+            let autocomplete = cmd_parse.autoComplete(cur_text.slice(1), this.getAccessObj().access);
             if (autocomplete && autocomplete.length) {
               let first = autocomplete[0];
               let auto_text = [];
@@ -364,7 +412,7 @@ ChatUI.prototype.run = function (opts) {
 
               let selected = drawHelpTooltip({
                 x, y: tooltip_y,
-                tooltip_width: w,
+                tooltip_width: max(w, engine.game_width * 0.8),
                 tooltip: auto_text,
                 do_selection,
                 font_height,
@@ -372,9 +420,8 @@ ChatUI.prototype.run = function (opts) {
               if (do_selection) {
                 // auto-completes to something different than we have typed
                 // Do not use ENTER as well, because sometimes a hidden command is a sub-string of a shown command?
-                if (input.keyDownEdge(input.KEYS.TAB) || selected) {
+                if (pressed_tab || selected) {
                   this.edit_text_entry.setText(`/${selected || first.cmd} `);
-                  this.edit_text_entry.focus();
                 }
               }
             }
@@ -394,6 +441,7 @@ ChatUI.prototype.run = function (opts) {
       if (res === this.edit_text_entry.SUBMIT) {
         let text = this.edit_text_entry.getText();
         if (text) {
+          this.edit_text_entry.setText('');
           if (text[0] === '/') {
             if (text[1] === '/') { // common error of starting with //foo because chat was already focused
               text = text.slice(1);
@@ -419,7 +467,6 @@ ChatUI.prototype.run = function (opts) {
               });
             }
           }
-          this.edit_text_entry.setText('');
         } else {
           is_focused = false;
           ui.focusCanvas();
@@ -453,7 +500,7 @@ ChatUI.prototype.run = function (opts) {
     ui.font.drawSizedWrapped(glov_font.styleAlpha(style, alpha), x, y, Z.CHAT + 1, w, indent, font_height, line);
     if (input.mouseOver({ x, y, w, h }) && !input.mousePosIsTouch()) {
       ui.drawTooltip({
-        x, y: y - 50,
+        x, y: y - 50, z: Z.TOOLTIP - 5,
         tooltip_width: 350,
         tooltip_pad: ui.tooltip_pad * 0.5,
         tooltip: `Received at ${conciseDate(new Date(msg.timestamp))}`,
