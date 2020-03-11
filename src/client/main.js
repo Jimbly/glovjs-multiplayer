@@ -24,7 +24,7 @@ Z.SPRITES = 10;
 Z.PARTICLES = 20;
 Z.BORDERS = 90;
 Z.UI = 100;
-Z.CHAT = 500;
+Z.CHAT_FOCUSED = Z.CHAT = 500;
 
 let app = exports;
 window.app = app; // for debugging
@@ -60,7 +60,7 @@ export function main() {
   const createAnimation = sprite_animation.create;
 
   app.account_ui = require('./account_ui.js').create();
-  app.chat_ui = require('./chat_ui.js').create(1000);
+  app.chat_ui = require('./chat_ui.js').create({ max_len: 1000 });
 
   const color_white = vec4(1, 1, 1, 1);
   const color_gray = vec4(0.5, 0.5, 0.5, 1);

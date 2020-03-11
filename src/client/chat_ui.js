@@ -7,11 +7,11 @@ const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const input = require('./glov/input.js');
 const local_storage = require('./glov/local_storage.js');
-const { ceil, max } = Math;
+const { ceil, floor, max, min } = Math;
 const net = require('./glov/net.js');
 const ui = require('./glov/ui.js');
-const { clamp } = require('../common/util.js');
-const { vec4 } = require('./glov/vmath.js');
+const { clamp, matchAll } = require('../common/util.js');
+const { vec4, v3copy } = require('./glov/vmath.js');
 
 const FADE_START_TIME = [10000, 1000];
 const FADE_TIME = [1000, 500];
@@ -97,11 +97,14 @@ CmdHistory.prototype.next = function (cur_text) {
   return this.entries[idx] || '';
 };
 
-function ChatUI(max_len) {
+function ChatUI(params) {
+  assert.equal(typeof params, 'object');
+  assert.equal(typeof params.max_len, 'number');
   this.edit_text_entry = ui.createEditBox({
-    placeholder: 'Chatbox',
+    placeholder: 'Chat',
     initial_focus: false,
-    max_len,
+    auto_unfocus: true,
+    max_len: params.max_len,
     text: '',
   });
   this.channel = null;
@@ -114,9 +117,11 @@ function ChatUI(max_len) {
   cmd_parse.setDefaultHandler(this.handle_cmd_parse_error);
   this.msgs = [];
   this.max_messages = 8;
-  this.max_len = max_len;
+  this.max_len = params.max_len;
   this.history = new CmdHistory();
   this.get_roles = null; // returns object for testing cmd access permissions
+  this.url_match = params.url_match; // runs `/url match[1]` if clicked
+  this.url_info = params.url_info; // Optional for grabbing the interesting portion of the URL for tooltip and /url
 
   this.styles = {
     def: glov_font.style(null, {
@@ -126,6 +131,16 @@ function ChatUI(max_len) {
     }),
     error: glov_font.style(null, {
       color: 0xDD0000ff,
+      outline_width: 1.0,
+      outline_color: 0x000000ff,
+    }),
+    link: glov_font.style(null, {
+      color: 0x5040FFff,
+      outline_width: 1.0,
+      outline_color: 0x000000ff,
+    }),
+    link_hover: glov_font.style(null, {
+      color: 0x0000FFff,
       outline_width: 1.0,
       outline_color: 0x000000ff,
     }),
@@ -227,33 +242,51 @@ let help_font_style_cmd = glov_font.style(help_font_style, {
 });
 let help_rollover_color = vec4(0, 0, 0, 0.25);
 let help_rollover_color2 = vec4(0, 0, 0, 0.125);
-const TOOLTIP_PAGE_SIZE = 20;
+const TOOLTIP_MIN_PAGE_SIZE = 20;
 let tooltip_page = 0;
 let tooltip_last = '';
+let tooltip_panel_color = vec4();
 function drawHelpTooltip(param) {
   assert(Array.isArray(param.tooltip));
   let tooltip = param.tooltip;
   let num_pages = 1;
+  let h = param.font_height;
+  let eff_tooltip_pad = ui.tooltip_pad * 0.5;
+  let num_per_page = min(TOOLTIP_MIN_PAGE_SIZE, max(1, floor((param.y - camera2d.y0() - eff_tooltip_pad) / h) - 1));
   if (tooltip.length > 20) {
     let text = tooltip.join('\n');
     if (text !== tooltip_last) {
       tooltip_page = 0;
       tooltip_last = text;
     }
-    num_pages = ceil(tooltip.length / TOOLTIP_PAGE_SIZE);
-    tooltip = tooltip.slice(tooltip_page * TOOLTIP_PAGE_SIZE, (tooltip_page + 1) * TOOLTIP_PAGE_SIZE);
+    num_pages = ceil(tooltip.length / num_per_page);
+    tooltip = tooltip.slice(tooltip_page * num_per_page, (tooltip_page + 1) * num_per_page);
   } else {
     tooltip_page = 0;
     tooltip_last = '';
   }
   let w = param.tooltip_width;
-  let h = param.font_height;
   let x = param.x;
   let z = param.z || Z.TOOLTIP;
-  let eff_tooltip_pad = ui.tooltip_pad * 0.5;
   let text_x = x + eff_tooltip_pad;
   let text_w = w - eff_tooltip_pad * 2;
   let tooltip_y1 = param.y;
+
+  let alpha = 1;
+  let vis_h = eff_tooltip_pad * 2 + h * tooltip.length;
+  if (!param.do_selection && num_pages === 1 && input.mouseOver({
+    x,
+    y: tooltip_y1 - vis_h,
+    w,
+    h: vis_h,
+  })) {
+    alpha = 0.15;
+  }
+  let style = help_font_style;
+  if (alpha !== 1) {
+    style = glov_font.styleAlpha(style, alpha);
+  }
+
   let y = tooltip_y1 - eff_tooltip_pad;
   let ret = null;
   if (num_pages > 1) {
@@ -291,7 +324,7 @@ function drawHelpTooltip(param) {
         ui.drawRect(text_x + cmd_w + 4, y, x + w, y + h, z + 0.5, help_rollover_color2);
       }
     } else {
-      ui.font.drawSizedAligned(help_font_style,
+      ui.font.drawSizedAligned(style,
         text_x, y, z+1, h, glov_font.ALIGN.HFIT,
         text_w, 0,
         line);
@@ -300,21 +333,15 @@ function drawHelpTooltip(param) {
   y -= eff_tooltip_pad;
   let pixel_scale = ui.tooltip_panel_pixel_scale * 0.5;
 
+  v3copy(tooltip_panel_color, ui.color_panel);
+  tooltip_panel_color[3] = alpha;
   ui.panel({
     x, y, z, w,
     h: tooltip_y1 - y,
     pixel_scale,
+    color: tooltip_panel_color,
   });
   return ret;
-}
-
-function getNumLines(w, indent, font_height, line) {
-  let numlines = 0;
-  function wordCallback(ignored, linenum, word) {
-    numlines = Math.max(numlines, linenum);
-  }
-  ui.font.wrapLines(w, indent, font_height, line, wordCallback);
-  return numlines + 1;
 }
 
 ChatUI.prototype.isFocused = function () {
@@ -345,6 +372,8 @@ ChatUI.prototype.run = function (opts) {
   let y0 = camera2d.y1();
   let y = y0;
   let w = engine.game_width / 2;
+  let was_focused = this.edit_text_entry && this.edit_text_entry.isFocused();
+  let z = was_focused ? Z.CHAT_FOCUSED : Z.CHAT;
   let is_focused = false;
   let font_height = ui.font_height;
   let anything_visible = false;
@@ -352,18 +381,23 @@ ChatUI.prototype.run = function (opts) {
     !(this.edit_text_entry && this.edit_text_entry.isFocused()) ?
     1 : // must be numerical, used to index fade values
     0;
+  let help_tooltip_up = false;
   if (!(ui.modal_dialog || ui.menu_up || hide_light)) {
     anything_visible = true;
-    let was_focused = this.edit_text_entry.isFocused();
     if (was_focused && input.touch_mode) {
       // expand chat when focused on touch devices
       w = camera2d.x1() - x - 24;
-      font_height *= 4;
+      let font_scale = 4;
+      let aspect = camera2d.screenAspect();
+      if (aspect > 2) { // scale up to font scale of 8
+        font_scale = 4 + 4 * min((aspect - 2) / 8, 1);
+      }
+      font_height *= font_scale;
     }
-    y -= font_height + 16; // or, font_height * (40/24) ?
+    y -= 16 + font_height;
     if (!was_focused && opts.pointerlock && input.pointerLocked()) {
       // do not show edit box
-      ui.font.drawSizedAligned(this.styles.def, x, y, Z.CHAT + 1, font_height, glov_font.ALIGN.HFIT, w, 0,
+      ui.font.drawSizedAligned(this.styles.def, x, y, z + 1, font_height, glov_font.ALIGN.HFIT, w, 0,
         '<Press Enter to chat>');
     } else {
       if (was_focused) {
@@ -405,17 +439,18 @@ ChatUI.prototype.run = function (opts) {
               if (last_msg) {
                 let msg = last_msg.msg;
                 if (msg && msg.slice(0, 7) === '[error]') {
-                  let numlines = getNumLines(w, indent, font_height, msg);
+                  let numlines = ui.font.numLines(this.styles.def, w, indent, font_height, msg);
                   tooltip_y -= font_height * numlines + SPACE_ABOVE_ENTRY;
                 }
               }
 
+              help_tooltip_up = true;
               let selected = drawHelpTooltip({
                 x, y: tooltip_y,
                 tooltip_width: max(w, engine.game_width * 0.8),
                 tooltip: auto_text,
                 do_selection,
-                font_height,
+                font_height: min(font_height, camera2d.w() / 30),
               });
               if (do_selection) {
                 // auto-completes to something different than we have typed
@@ -436,7 +471,16 @@ ChatUI.prototype.run = function (opts) {
           this.edit_text_entry.setText(this.history.next(cur_text));
         }
       }
-      let res = this.edit_text_entry.run({ x, y, w, font_height, pointer_lock: opts.pointerlock });
+      let input_height = font_height;
+      let input_width = w;
+      if (input.touch_mode && !was_focused) {
+        y -= font_height * 2;
+        input_height = font_height * 3;
+        input_width = font_height * 6;
+      }
+      let res = this.edit_text_entry.run({
+        x, y, w: input_width, font_height: input_height, pointer_lock: opts.pointerlock
+      });
       is_focused = this.edit_text_entry.isFocused();
       if (res === this.edit_text_entry.SUBMIT) {
         let text = this.edit_text_entry.getText();
@@ -496,20 +540,41 @@ ChatUI.prototype.run = function (opts) {
     if (!alpha) {
       break;
     }
-    let style = this.styles[msg.style || 'def'];
     let line = msg.msg;
-    let numlines = getNumLines(w, indent, font_height, line);
+    let is_url = this.url_match && matchAll(line, this.url_match);
+    is_url = is_url && is_url.length === 1 && is_url[0];
+    let url_info = is_url;
+    if (is_url && this.url_info) {
+      let m = is_url.match(this.url_info);
+      if (m) {
+        url_info = m[1];
+      }
+    }
+    let numlines = ui.font.numLines(this.styles.def, w, indent, font_height, line);
     let h = font_height * numlines;
     y -= h;
-    ui.font.drawSizedWrapped(glov_font.styleAlpha(style, alpha), x, y, Z.CHAT + 1, w, indent, font_height, line);
-    if (input.mouseOver({ x, y, w, h }) && !input.mousePosIsTouch()) {
+    let mouseover = input.mouseOver({ x, y, w, h, peek: true }) && !input.mousePosIsTouch();
+    let style = this.styles[msg.style || (is_url ? mouseover ? 'link_hover' : 'link' : 'def')];
+    ui.font.drawSizedWrapped(glov_font.styleAlpha(style, alpha), x, y, z + 1, w, indent, font_height, line);
+    if (mouseover) {
       ui.drawTooltip({
-        x, y: y - 50, z: Z.TOOLTIP - 5,
+        x, y, z: Z.TOOLTIP - 5,
+        tooltip_above: true,
         tooltip_width: 350,
         tooltip_pad: ui.tooltip_pad * 0.5,
-        tooltip: `Received at ${conciseDate(new Date(msg.timestamp))}`,
+        tooltip: `${(is_url ? `Click to open #${url_info}` : `Received at ${conciseDate(new Date(msg.timestamp))}`)}` +
+          '\nRight-click to copy',
         pixel_scale: ui.tooltip_panel_pixel_scale * 0.5,
       });
+    }
+    // mouseDownEdge because by the time the Up happens, the chat text might not be here anymore
+    let click = input.mouseDownEdge({ x, y, w, h });
+    if (click) {
+      if (click.button === 2) {
+        ui.provideUserString('Chat Text', is_url ? 'URL' : 'Text', is_url || line);
+      } else if (is_url) {
+        this.cmdParseInternal(`url ${url_info}`);
+      }
     }
     anything_visible = true;
   }
@@ -518,7 +583,15 @@ ChatUI.prototype.run = function (opts) {
     return;
   }
   let border = 8;
-  ui.drawRect(camera2d.x0(), y - border, x + w + border + 8, y0, Z.CHAT, [0.3,0.3,0.3,0.75]);
+  ui.drawRect(camera2d.x0(), y - border, x + w + border + 8, y0, z, [0.3,0.3,0.3,0.75]);
+  if (was_focused && !help_tooltip_up) {
+    input.mouseConsumeClicks({
+      x: camera2d.x0(),
+      y: y - border,
+      w: x + w + border + 8 - camera2d.x0(),
+      h: y0 - (y - border),
+    });
+  }
 };
 
 ChatUI.prototype.setChannel = function (channel) {
@@ -558,6 +631,6 @@ ChatUI.prototype.setChannel = function (channel) {
   }
 };
 
-export function create(max_len) {
-  return new ChatUI(max_len);
+export function create(params) {
+  return new ChatUI(params);
 }

@@ -365,6 +365,16 @@ class GlovFont {
     return this.wrapLinesScaled(w, indent, size / this.font_info.font_size, text, word_cb);
   }
 
+  numLines(style, w, indent, size, text) {
+    this.applyStyle(style);
+    let numlines = 0;
+    function wordCallback(ignored, linenum, word) {
+      numlines = max(numlines, linenum);
+    }
+    this.wrapLines(w, indent, size, text, wordCallback);
+    return numlines + 1;
+  }
+
   infoFromChar(c) {
     let ret = this.char_infos[c];
     if (ret) {
@@ -459,7 +469,7 @@ class GlovFont {
         if (x > w) {
           // maybe wrap
           let word_width = x - word_x0;
-          if (word_width > w) {
+          if (word_width > w - indent) {
             // not going to fit, split it up!
             hard_wrap = true;
             // recover and restart at word start

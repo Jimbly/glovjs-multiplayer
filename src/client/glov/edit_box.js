@@ -23,6 +23,7 @@ class GlovUIEditBox {
     this.max_len = 0;
     this.initial_focus = false;
     this.onetime_focus = false;
+    this.auto_unfocus = false;
     this.initial_select = false;
     this.spellcheck = true;
     this.applyParams(params);
@@ -63,6 +64,9 @@ class GlovUIEditBox {
       glov_input.pointerLockExit();
     }
   }
+  unfocus() {
+    glov_ui.focusNext(this);
+  }
   isFocused() { // call after .run()
     return this.is_focused;
   }
@@ -101,6 +105,7 @@ class GlovUIEditBox {
             this.input.blur();
           }
           focused = false;
+          this.canceled = true;
         }
       }
     }
@@ -117,6 +122,7 @@ class GlovUIEditBox {
     }
     this.last_frame = engine.global_frame_index;
 
+    this.canceled = false;
     let focused = this.updateFocus();
 
     glov_ui.this_frame_edit_boxes.push(this);
@@ -174,16 +180,21 @@ class GlovUIEditBox {
       }
       elem.style.left = `${pos[0]}%`;
       elem.style.top = `${pos[1]}%`;
-      let size = camera2d.htmlSize(this.w, this.h);
+      let size = camera2d.htmlSize(this.w, 0);
       elem.style.width = `${size[0]}%`;
-      let old_fontsize = elem.style.fontSize || '1.00em';
-      let new_fontsize = `${(this.font_height / glov_ui.font_height).toFixed(2)}em`;
+      let old_fontsize = elem.style.fontSize || '?px';
+      let new_fontsize = `${camera2d.virtualToFontSize(this.font_height).toFixed(0)}px`;
       if (new_fontsize !== old_fontsize) {
         elem.style.fontSize = new_fontsize;
       }
     }
 
     if (focused) {
+      if (this.auto_unfocus) {
+        if (glov_input.click({ peek: true })) {
+          glov_ui.focusSteal('canvas');
+        }
+      }
       // keyboard input is handled by the INPUT element, but allow mouse events to trickle
       glov_input.eatAllKeyboardInput();
     }
@@ -191,6 +202,10 @@ class GlovUIEditBox {
     if (this.submitted) {
       this.submitted = false;
       return this.SUBMIT;
+    }
+    if (this.canceled) {
+      this.canceled = false;
+      return this.CANCEL;
     }
     return null;
   }
@@ -201,6 +216,7 @@ class GlovUIEditBox {
   }
 }
 GlovUIEditBox.prototype.SUBMIT = 'submit';
+GlovUIEditBox.prototype.CANCEL = 'cancel';
 
 export function create(params) {
   return new GlovUIEditBox(params);

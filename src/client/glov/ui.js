@@ -133,7 +133,7 @@ export let button_img_size = button_height;
 export let modal_width = 600;
 export let modal_y0 = 200;
 export let modal_title_scale = 1.2;
-export let pad = 16;
+export let modal_pad = 16;
 export let panel_pixel_scale = 32 / 13; // button_height / button pixel resolution
 export let tooltip_panel_pixel_scale = panel_pixel_scale;
 export let tooltip_width = 400;
@@ -156,6 +156,7 @@ export let modal_font_style = glov_font.styleColored(null, 0x000000ff);
 let sounds = {};
 export let button_mouseover = false; // for callers to poll the very last button
 export let button_focused = false; // for callers to poll the very last button
+export let button_click = null; // on click, for callers to poll which mouse button, etc
 export let touch_changed_focus = false; // did a touch even this frame change focus?
 // For tracking global mouseover state
 let last_frame_button_mouseover = false;
@@ -234,7 +235,7 @@ export function startup(param) {
   sprites.white = glov_sprites.create({ url: 'white' });
 
   button_keys = {
-    ok: { key: [], pad: [PAD.X] },
+    ok: { key: [KEYS.O], pad: [PAD.X] },
     cancel: { key: [KEYS.ESC], pad: [PAD.B, PAD.Y] },
   };
   button_keys.yes = clone(button_keys.ok);
@@ -298,6 +299,27 @@ export function drawHBox(coords, s, color) {
       // nozoom: true, // nozoom since different parts of the box get zoomed differently
     });
     x += my_w;
+  }
+}
+
+export function drawVBox(coords, s, color) {
+  let uidata = s.uidata;
+  let hs = [uidata.hw[0] * coords.w, 0, uidata.hw[2] * coords.w];
+  let y = coords.y;
+  hs[1] = max(0, coords.h - hs[0] - hs[2]);
+  for (let ii = 0; ii < hs.length; ++ii) {
+    let my_h = hs[ii];
+    s.draw({
+      x: coords.x,
+      y,
+      z: coords.z,
+      color,
+      w: coords.w,
+      h: my_h,
+      uvs: uidata.rects[ii],
+      // nozoom: true, // nozoom since different parts of the box get zoomed differently
+    });
+    y += my_h;
   }
 }
 
@@ -455,9 +477,13 @@ export function drawTooltip(param) {
   let z = param.z || Z.TOOLTIP;
   let tooltip_y0 = param.y;
   let eff_tooltip_pad = param.tooltip_pad || tooltip_pad;
+  let w = tooltip_w - eff_tooltip_pad * 2;
+  if (param.tooltip_above) {
+    tooltip_y0 -= font_height * font.numLines(modal_font_style, w, 0, font_height, param.tooltip) + eff_tooltip_pad * 2;
+  }
   let y = tooltip_y0 + eff_tooltip_pad;
   y += font.drawSizedWrapped(modal_font_style,
-    x + eff_tooltip_pad, y, z+1, tooltip_w - eff_tooltip_pad * 2, 0, font_height,
+    x + eff_tooltip_pad, y, z+1, w, 0, font_height,
     param.tooltip);
   y += eff_tooltip_pad;
   let pixel_scale = param.pixel_scale || tooltip_panel_pixel_scale;
@@ -495,7 +521,9 @@ export function buttonShared(param) {
       focusSteal(key);
       focused = true;
     }
-  } else if (glov_input.click(param)) {
+  } else if ((button_click = glov_input.click(param)) ||
+    param.long_press && (button_click = glov_input.longPress(param))
+  ) {
     if (!param.no_touch_mouseover || !glov_input.mousePosIsTouch()) {
       setMouseOver(key);
     }
@@ -513,6 +541,8 @@ export function buttonShared(param) {
     // Set this even if param.no_touch_mouse_over is set
     setMouseOver(key);
     state = glov_input.mouseDown() ? 'down' : 'rollover';
+  } else if (param.drag_over && glov_input.dragOver(param)) {
+    // do nothing
   } else if (glov_input.mouseOver(param)) {
     if (param.no_touch_mouseover && glov_input.mousePosIsTouch()) {
       // do not set mouseover
@@ -538,7 +568,8 @@ export function buttonShared(param) {
   if (button_mouseover && param.tooltip) {
     drawTooltip({
       x: param.x,
-      y: param.tooltip_above ? param.y - font_height * 2 - 16 : param.y + param.h + 2,
+      y: param.tooltip_above ? param.y - 2 : param.y + param.h + 2,
+      tooltip_above: param.tooltip_above,
       tooltip: param.tooltip,
       tooltip_width: param.tooltip_width,
     });
@@ -624,9 +655,10 @@ export function buttonImage(param) {
   let largest_w_vert = param.h * param.shrink * aspect;
   img_w = min(largest_w_horiz, largest_w_vert);
   img_h = img_w / aspect;
+  let pad_top = (param.h - img_h) / 2;
   let draw_param = {
-    x: param.x + (param.w - img_w) / 2 + img_origin[0] * img_w,
-    y: param.y + (param.h - img_h) / 2 + img_origin[1] * img_h,
+    x: param.x + (param.left_align ? pad_top : (param.w - img_w) / 2) + img_origin[0] * img_w,
+    y: param.y + pad_top + img_origin[1] * img_h,
     z: param.z + 0.1,
     color: param.color1 && param.color ? param.color : color, // use explicit tint if doing dual-tinting
     color1: param.color1,
@@ -635,6 +667,11 @@ export function buttonImage(param) {
     uvs,
     rot: param.rotation,
   };
+  if (param.flip) {
+    let { x, w } = draw_param;
+    draw_param.x = x + w;
+    draw_param.w = -w;
+  }
   if (param.color1) {
     param.img.drawDualTint(draw_param);
   } else {
@@ -661,42 +698,89 @@ export function modalDialogClear() {
   modal_dialog = null;
 }
 
+let dom_requirement = vec2(24,24);
+let virtual_size = vec2();
 function modalDialogRun() {
-  const eff_button_width = modal_dialog.button_width || modal_button_width;
-  const game_width = camera2d.x1() - camera2d.x0();
-  const text_w = modal_width - pad * 2;
-  const x0 = camera2d.x0() + round((game_width - modal_width) / 2);
-  let x = x0 + pad;
-  const y0 = modal_y0;
-  let y = y0 + pad;
+  camera2d.domDeltaToVirtual(virtual_size, dom_requirement);
+  let fullscreen_mode = false;
   let eff_font_height = modal_dialog.font_height || font_height;
+  let eff_button_height = button_height;
+  let pad = modal_pad;
+  let general_scale = 1;
+  if (virtual_size[0] > 0.1 * camera2d.h() && camera2d.w() > camera2d.h() * 2) {
+    // If a 24-pt font is more than 10% of the camera height, we're probably super-wide-screen
+    // on a mobile device due to keyboard being visible
+    fullscreen_mode = true;
+    eff_button_height = eff_font_height;
+    pad = 4;
+
+    let old_h = camera2d.h();
+    camera2d.push();
+    camera2d.setAspectFixed2(1, eff_font_height * (modal_title_scale + 2) + pad * 4.5);
+    general_scale = camera2d.h() / old_h;
+  }
+
+  let { buttons, click_anywhere } = modal_dialog;
+  let keys = Object.keys(buttons);
+
+  const game_width = camera2d.x1() - camera2d.x0();
+  const eff_modal_width = fullscreen_mode ? game_width : modal_width;
+  let eff_button_width = modal_dialog.button_width || modal_button_width;
+  let max_total_button_width = eff_modal_width * 2 / 3;
+  eff_button_width = min(eff_button_width, max_total_button_width / keys.length);
+  const text_w = eff_modal_width - pad * 2;
+  const x0 = camera2d.x0() + round((game_width - eff_modal_width) / 2);
+  let x = x0 + pad;
+  const y0 = fullscreen_mode ? 0 : modal_y0;
+  let y = y0 + pad;
 
   if (glov_input.pointerLocked()) {
     glov_input.pointerLockExit();
   }
 
   if (modal_dialog.title) {
-    y += font.drawSizedWrapped(modal_font_style,
-      x, y, Z.MODAL, text_w, 0, eff_font_height * modal_title_scale,
-      modal_dialog.title);
+    if (fullscreen_mode) {
+      font.drawSizedAligned(modal_font_style, x, y, Z.MODAL, eff_font_height * modal_title_scale,
+        glov_font.ALIGN.HFIT, text_w, 0, modal_dialog.title);
+      y += eff_font_height * modal_title_scale;
+    } else {
+      y += font.drawSizedWrapped(modal_font_style,
+        x, y, Z.MODAL, text_w, 0, eff_font_height * modal_title_scale,
+        modal_dialog.title);
+    }
     y += round(pad * 1.5);
   }
 
   if (modal_dialog.text) {
-    y += font.drawSizedWrapped(modal_font_style, x, y, Z.MODAL, text_w, 0, eff_font_height,
-      modal_dialog.text);
+    if (fullscreen_mode) {
+      font.drawSizedAligned(modal_font_style, x, y, Z.MODAL, eff_font_height,
+        glov_font.ALIGN.HFIT, text_w, 0, modal_dialog.text);
+      y += eff_font_height;
+    } else {
+      y += font.drawSizedWrapped(modal_font_style, x, y, Z.MODAL, text_w, 0, eff_font_height,
+        modal_dialog.text);
+    }
     y += pad;
   }
 
+  let tick_key;
   if (modal_dialog.tick) {
-    let param = { x, y };
-    modal_dialog.tick(param);
+    let avail_width = eff_modal_width - pad * 2;
+    if (fullscreen_mode) {
+      avail_width -= (pad + eff_button_width) * keys.length;
+    }
+    let param = {
+      x, y,
+      modal_width: eff_modal_width,
+      avail_width,
+      font_height: eff_font_height,
+      fullscreen_mode,
+    };
+    tick_key = modal_dialog.tick(param);
     y = param.y;
   }
 
-  let { buttons, click_anywhere } = modal_dialog;
-  let keys = Object.keys(buttons);
-  x = x0 + modal_width - pad - eff_button_width - (pad + eff_button_width) * (keys.length - 1);
+  x = x0 + eff_modal_width - (pad + eff_button_width) * keys.length;
   for (let ii = 0; ii < keys.length; ++ii) {
     let key = keys[ii];
     let eff_button_keys = button_keys[key.toLowerCase()];
@@ -704,6 +788,9 @@ function modalDialogRun() {
     if (eff_button_keys) {
       for (let jj = 0; jj < eff_button_keys.key.length; ++jj) {
         pressed += glov_input.keyDownEdge(eff_button_keys.key[jj]);
+        if (eff_button_keys.key[jj] === tick_key) {
+          pressed++;
+        }
       }
       for (let jj = 0; jj < eff_button_keys.pad.length; ++jj) {
         pressed += glov_input.padButtonDownEdge(eff_button_keys.pad[jj]);
@@ -720,7 +807,7 @@ function modalDialogRun() {
       y,
       z: Z.MODAL,
       w: eff_button_width,
-      h: button_height,
+      h: eff_button_height,
       text: key
     }) || pressed
     ) {
@@ -731,19 +818,71 @@ function modalDialogRun() {
     }
     x += pad + eff_button_width;
   }
-  y += button_height;
+  y += eff_button_height;
   y += pad * 2;
   panel({
     x: x0,
     y: y0,
     z: Z.MODAL - 1,
-    w: modal_width,
-    h: y - y0,
+    w: eff_modal_width,
+    h: (fullscreen_mode ? camera2d.y1() : y) - y0,
+    pixel_scale: panel_pixel_scale * general_scale,
   });
 
   glov_input.eatAllInput();
   modal_stealing_focus = true;
+  if (fullscreen_mode) {
+    camera2d.pop();
+  }
 }
+
+export function modalTextEntry(param) {
+  let eb = glov_edit_box.create({
+    allow_modal: true,
+    initial_focus: true,
+    spellcheck: false,
+    initial_select: true,
+    text: param.edit_text,
+  });
+  let buttons = {};
+  for (let key in param.buttons) {
+    let val = param.buttons[key];
+    if (typeof val === 'function') {
+      val = (function (old_fn) {
+        return function () {
+          old_fn(eb.getText());
+        };
+      }(val));
+    }
+    buttons[key] = val;
+  }
+  param.buttons = buttons;
+  param.text = `${param.text || ''}`;
+  let old_tick = param.tick;
+  param.tick = function (params) {
+    let eb_ret = eb.run({
+      x: params.x,
+      y: params.y,
+      w: params.avail_width || param.edit_w,
+      font_height: params.font_height,
+    });
+    if (!params.fullscreen_mode) {
+      params.y += params.font_height + modal_pad;
+    }
+    let ret;
+    if (eb_ret === eb.SUBMIT) {
+      ret = KEYS.O; // Do OK, Yes
+    } else if (eb_ret === eb.CANCEL) {
+      ret =KEYS.ESC; // Do Cancel, No
+    }
+    if (old_tick) {
+      ret = old_tick(params) || ret;
+    }
+    return ret;
+  };
+  modalDialog(param);
+}
+
 
 export function createEditBox(param) {
   return glov_edit_box.create(param);
@@ -752,6 +891,7 @@ export function createEditBox(param) {
 const color_slider_handle = vec4(1,1,1,1);
 const color_slider_handle_grab = vec4(0.5,0.5,0.5,1);
 const color_slider_handle_over = vec4(0.75,0.75,0.75,1);
+export let slider_dragging = false; // for caller polling
 // Returns new value
 export function slider(value, param) {
   // required params
@@ -763,6 +903,8 @@ export function slider(value, param) {
   param.w = param.w || button_width;
   param.h = param.h || button_height;
   let disabled = param.disabled || false;
+
+  slider_dragging = false;
 
   drawHBox(param, sprites.slider, param.color);
 
@@ -807,9 +949,10 @@ export function slider(value, param) {
     value = param.min + (param.max - param.min) * clamp(value, 0, 1);
     // Eat all mouseovers while dragging
     glov_input.mouseOver();
+    slider_dragging = true;
   }
   let rollover = !disabled && glov_input.mouseOver(param);
-  let handle_center_pos = param.x + xoffs + draggable_width * (value - param.min) / param.max;
+  let handle_center_pos = param.x + xoffs + draggable_width * (value - param.min) / (param.max - param.min);
   let handle_h = param.h;
   let handle_w = sprites.slider_handle.uidata.wh[0] * handle_h;
   let handle_x = handle_center_pos - handle_w / 2;
@@ -911,6 +1054,47 @@ export function menuUp(param) {
   menu_up = true;
   modal_stealing_focus = true;
   glov_input.eatAllInput();
+}
+
+function copyTextToClipboard(text) {
+  let textArea = document.createElement('textarea');
+  textArea.style.position = 'fixed';
+  textArea.style.top = 0;
+  textArea.style.left = 0;
+  textArea.style.width = '2em';
+  textArea.style.height = '2em';
+  textArea.style.border = 'none';
+  textArea.style.outline = 'none';
+  textArea.style.boxShadow = 'none';
+  textArea.style.background = 'transparent';
+  textArea.value = text;
+
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+
+  let ret = false;
+  try {
+    ret = document.execCommand('copy');
+  } catch (err) {
+    // do nothing
+  }
+
+  document.body.removeChild(textArea);
+  return ret;
+}
+
+export function provideUserString(title, thing, str) {
+  let copy_success = copyTextToClipboard(str);
+  modalTextEntry({
+    edit_w: 400,
+    edit_text: str,
+    title,
+    text: copy_success ? `${thing} copied to clipboard!` : 'Copy to clipboard FAILED, please copy from below\n',
+    buttons: {
+      OK: null,
+    },
+  });
 }
 
 export function drawRect(x0, y0, x1, y1, z, color) {
@@ -1115,7 +1299,7 @@ export function scaleSizes(scale) {
   modal_width = round(600 * scale);
   modal_y0 = round(200 * scale);
   modal_title_scale = 1.2;
-  pad = round(16 * scale);
+  modal_pad = round(16 * scale);
   tooltip_width = round(400 * scale);
   tooltip_pad = round(8 * scale);
   panel_pixel_scale = button_height / 13; // button_height / panel pixel resolution
@@ -1136,6 +1320,7 @@ export function setFontHeight(_font_height) {
 export function setTooltipWidth(_tooltip_width, _tooltip_panel_pixel_scale) {
   tooltip_width = _tooltip_width;
   tooltip_panel_pixel_scale = _tooltip_panel_pixel_scale;
+  tooltip_pad = modal_pad / 2 * _tooltip_panel_pixel_scale;
 }
 
 scaleSizes(1);

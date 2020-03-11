@@ -114,7 +114,7 @@ ClientChannelWorker.prototype.send = function (msg, data, opts, resp_func) {
     channel_id: this.channel_id,
     msg, data,
     broadcast: opts && opts.broadcast || undefined,
-    silent_error: opts && opts.silent_error,
+    silent_error: (opts && opts.silent_error) ? 1 : undefined,
   }, resp_func);
 };
 
@@ -378,6 +378,8 @@ SubscriptionManager.prototype.login = function (username, password, resp_func) {
     this.userCreate({
       user_id: username,
       password,
+      password_confirm: password,
+      email: 'autocreate@glovjs.org',
     }, resp_func);
   });
 };
@@ -440,6 +442,7 @@ SubscriptionManager.prototype.logout = function () {
       this.logged_in_username = null;
       this.was_logged_in = false;
       this.login_credentials = null;
+      this.emit('logout');
     }
   });
 };

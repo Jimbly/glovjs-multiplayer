@@ -145,6 +145,10 @@ class GlovSelectionBox {
     return this.items[this.selected].tag === tag_or_index;
   }
 
+  getSelected() {
+    return this.items[this.selected];
+  }
+
   getHeight() {
     let { display, entry_height } = this;
     if (this.is_dropdown) {
@@ -221,6 +225,9 @@ class GlovSelectionBox {
         eff_sel = num_non_disabled_selections - 1;
       }
       pos_changed = true;
+    }
+    if (!focused && this.dropdown_visible) {
+      this.dropdown_visible = false;
     }
 
     if (!this.is_dropdown && !display.no_background) {
@@ -358,7 +365,7 @@ class GlovSelectionBox {
       font.drawSizedAligned(focused ? glov_ui.font_style_focused : glov_ui.font_style_normal,
         x + display.xpad, y, z + 2,
         font_height, glov_font.ALIGN.HFIT | glov_font.ALIGN.VCENTER, // eslint-disable-line no-bitwise
-        width - display.xpad * 2, entry_height,
+        width - display.xpad - glov_ui.sprites.menu_header.uidata.wh[2] * entry_height, entry_height,
         this.items[this.selected].name);
       y += entry_height;
       yret = y + 2;

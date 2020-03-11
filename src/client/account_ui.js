@@ -8,8 +8,6 @@ const net = require('./glov/net.js');
 const ui = require('./glov/ui.js');
 const { vec4 } = require('./glov/vmath.js');
 
-const AUTO_ANON = false;
-
 function AccountUI() {
   this.edit_box_name = ui.createEditBox({
     placeholder: 'Username',
@@ -53,7 +51,9 @@ AccountUI.prototype.showLogin = function (param) {
     login_message = 'Logging in...';
   } else if (net.subs.logging_out) {
     login_message = 'Logging out...';
-  } else if (!net.subs.loggedIn() && AUTO_ANON && !local_storage.get('did_auto_anon') && !local_storage.get('name')) {
+  } else if (!net.subs.loggedIn() && net.subs.auto_create_user &&
+    !local_storage.get('did_auto_anon') && !local_storage.get('name')
+  ) {
     login_message = 'Auto logging in...';
     local_storage.set('did_auto_anon', 'yes');
     let name = `anon${String(Math.random()).slice(2, 8)}`;
