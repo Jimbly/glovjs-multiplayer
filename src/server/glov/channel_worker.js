@@ -648,9 +648,10 @@ export class ChannelWorker {
     this.checkPacketQueue(source);
   }
 
-  // source is a string channel_id
-  handleMessage(source, net_data) {
+  handleMessage(net_data) {
     let channel_worker = this;
+    // source is a string channel_id
+    let source = net_data.src;
     let ids = net_data.ids || {};
     let split = source.split('.');
     assert.equal(split.length, 2);

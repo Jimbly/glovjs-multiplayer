@@ -28,6 +28,7 @@ export function channelServerSend(source, dest, msg, err, data, resp_func) {
   assert(typeof msg === 'string' || typeof msg === 'number');
   let net_data = ack.wrapMessage(source, msg, err, data, resp_func);
   net_data.pkt_idx = pkt_idx;
+  net_data.src = source.channel_id;
   if (source.ids) {
     net_data.ids = source.ids;
   }
@@ -48,7 +49,7 @@ export function channelServerSend(source, dest, msg, err, data, resp_func) {
     if (!retries--) {
       return resp_func(prev_error || 'RETRIES_EXHAUSTED');
     }
-    return exchange.publish(source.channel_id, dest, net_data, function (err) {
+    return exchange.publish(dest, net_data, function (err) {
       if (!err) {
         // Sent successfully, resp_func called when other side ack's.
         return null;

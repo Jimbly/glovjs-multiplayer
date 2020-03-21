@@ -12,7 +12,7 @@ let queues = {};
 let broadcasts = {};
 
 // register as an authoritative single handler
-// cb(src, message)
+// cb(message)
 // register_cb(err) if already exists
 export function register(id, cb, register_cb) {
   assert(id);
@@ -34,9 +34,9 @@ export function unregister(id) {
 }
 
 // cb(err)
-export function publish(src, dest, msg, cb) {
+export function publish(dest, msg, cb) {
   if (LOG_MESSAGES) {
-    console.debug(`exchange.publish ${src}->${dest}: ${
+    console.debug(`exchange.publish ->${dest}: ${
       msg.err ?
         `err:${msg.err}` :
         typeof msg.msg==='number' ?
@@ -48,14 +48,14 @@ export function publish(src, dest, msg, cb) {
   process.nextTick(function () {
     if (broadcasts[dest]) {
       for (let ii = 0; ii < broadcasts[dest].length; ++ii) {
-        broadcasts[dest][ii](src, msg);
+        broadcasts[dest][ii](msg);
       }
       return cb(null);
     }
     if (!queues[dest]) {
       return cb(ERR_NOT_FOUND);
     }
-    queues[dest](src, msg);
+    queues[dest](msg);
     return cb(null);
   });
 }
