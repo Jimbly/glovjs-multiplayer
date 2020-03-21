@@ -164,7 +164,7 @@ export class ChannelWorker {
   }
 
   onUnSubscribe(src, data, resp_func) {
-    let { channel_id, user_id } = src;
+    let { channel_id } = src;
     let is_client = src.type === 'client';
     let idx = this.subscribers.indexOf(channel_id);
     if (idx === -1) {
@@ -181,6 +181,7 @@ export class ChannelWorker {
     }
 
     if (this.maintain_client_list && is_client) {
+      let user_id = this.getChannelData(`public.clients.${src.id}.ids.user_id`);
       this.setChannelData(`public.clients.${src.id}`, undefined);
       if (user_id) {
         this.unsubscribeOther(`user.${user_id}`);
@@ -437,8 +438,8 @@ export class ChannelWorker {
     return resp_func();
   }
 
-  onSetChannelData(source, data) {
-    this.setChannelDataInternal(source, data.key, data.value, data.q);
+  onSetChannelData(source, data, resp_func) {
+    this.setChannelDataInternal(source, data.key, data.value, data.q, resp_func);
   }
   setChannelData(key, value, q) {
     this.setChannelDataInternal(this.core_ids, key, value, q);
@@ -473,7 +474,7 @@ export class ChannelWorker {
     return this.permissive_client_set; // default false - don't let clients change anything other than their own data
   }
 
-  setChannelDataInternal(source, key, value, q) {
+  setChannelDataInternal(source, key, value, q, resp_func) {
     assert(typeof key === 'string');
     assert(typeof source === 'object');
     if (this.handleSetChannelData ?
@@ -482,6 +483,9 @@ export class ChannelWorker {
     ) {
       // denied by app_worker
       console.log(`setChannelData on ${key} from ${source.channel_id} failed handleSetChannelData() check`);
+      if (resp_func) {
+        resp_func('ERR_INTERNAL');
+      }
       return;
     }
 
@@ -499,6 +503,9 @@ export class ChannelWorker {
       this.channelEmit('apply_channel_data', data, this.adding_client);
     }
     this.commitData();
+    if (resp_func) {
+      resp_func();
+    }
   }
   getChannelData(key, default_value) {
     return dot_prop.get(this.data, key, default_value);

@@ -6,6 +6,7 @@ const { cmd_parse } = require('./glov/cmds.js');
 const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const input = require('./glov/input.js');
+const { link } = require('./glov/link.js');
 const local_storage = require('./glov/local_storage.js');
 const { ceil, floor, max, min } = Math;
 const net = require('./glov/net.js');
@@ -553,6 +554,10 @@ ChatUI.prototype.run = function (opts) {
     let numlines = ui.font.numLines(this.styles.def, w, indent, font_height, line);
     let h = font_height * numlines;
     y -= h;
+    let click;
+    if (is_url) {
+      click = link({ x, y, w, h, url: is_url, internal: true });
+    }
     let mouseover = input.mouseOver({ x, y, w, h, peek: true }) && !input.mousePosIsTouch();
     let style = this.styles[msg.style || (is_url ? mouseover ? 'link_hover' : 'link' : 'def')];
     ui.font.drawSizedWrapped(glov_font.styleAlpha(style, alpha), x, y, z + 1, w, indent, font_height, line);
@@ -562,13 +567,14 @@ ChatUI.prototype.run = function (opts) {
         tooltip_above: true,
         tooltip_width: 350,
         tooltip_pad: ui.tooltip_pad * 0.5,
-        tooltip: `${(is_url ? `Click to open #${url_info}` : `Received at ${conciseDate(new Date(msg.timestamp))}`)}` +
-          '\nRight-click to copy',
+        tooltip: is_url ?
+          `Click to open ${url_info}` :
+          `Received at ${conciseDate(new Date(msg.timestamp))}\nRight-click to copy`,
         pixel_scale: ui.tooltip_panel_pixel_scale * 0.5,
       });
     }
     // mouseDownEdge because by the time the Up happens, the chat text might not be here anymore
-    let click = input.mouseDownEdge({ x, y, w, h });
+    click = click || input.mouseDownEdge({ x, y, w, h });
     if (click) {
       if (click.button === 2) {
         ui.provideUserString('Chat Text', is_url ? 'URL' : 'Text', is_url || line);

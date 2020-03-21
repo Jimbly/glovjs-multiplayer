@@ -129,7 +129,8 @@ const invalid_names = {
   password: 1,
   user: 1,
 };
-function validUsername(user_id) {
+const regex_admin_username = /^(admin|mod_|gm_|moderator)/; // Might exist in the system, do not allow to be created
+function validUsername(user_id, allow_admin) {
   if (!user_id) {
     return false;
   }
@@ -140,6 +141,9 @@ function validUsername(user_id) {
   user_id = user_id.toLowerCase();
   if (invalid_names[user_id]) {
     // also catches anything on Object.prototype
+    return false;
+  }
+  if (!allow_admin && user_id.match(regex_admin_username)) {
     return false;
   }
   if (!user_id.match(regex_valid_username)) {
@@ -177,7 +181,7 @@ function handleLoginResponse(client, user_id, resp_func, err, resp_data) {
 function onLogin(client, data, resp_func) {
   console.log(`client_id:${client.id}->server login ${logdata(data)}`);
   let user_id = data.user_id;
-  if (!validUsername(user_id)) {
+  if (!validUsername(user_id, true)) {
     return resp_func('Invalid username');
   }
   user_id = user_id.toLowerCase();

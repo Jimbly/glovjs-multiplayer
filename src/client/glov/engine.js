@@ -666,7 +666,11 @@ function glovErrorReport(msg, file, line, col) {
     return false;
   }
   // Post to an error reporting endpoint that (probably) doesn't exist - it'll get in the logs anyway!
-  let url = (location.href || '').match(/^[^#?]*/)[0];
+  let url = urlhash.getURLBase(); // base like http://foo.com/bar/index.html or http://foo.com/bar/
+  let idx = url.lastIndexOf('/'); // Remove anything after the last slash
+  if (idx !== -1 && idx > 8) { // > 'https://'.length
+    url = url.slice(0, idx + 1);
+  }
   url += `errorReport?cidx=${crash_idx}&file=${escape(file)}&line=${line}&col=${col}&url=${escape(location.href)}` +
     `&msg=${escape(msg)}${error_report_details_str}`;
   let xhr = new XMLHttpRequest();

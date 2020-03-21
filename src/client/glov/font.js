@@ -108,24 +108,21 @@ export const ALIGN = {
   };
 */
 
-function GlovFontDefaultStyle() {
-  // Empty constructor
+function GlovFontStyle() {
+  this.color_vec4 = vec4();
 }
-GlovFontDefaultStyle.prototype.outline_width = 0;
-GlovFontDefaultStyle.prototype.outline_color = 0x00000000;
-GlovFontDefaultStyle.prototype.glow_xoffs = 0;
-GlovFontDefaultStyle.prototype.glow_yoffs = 0;
-GlovFontDefaultStyle.prototype.glow_inner = 0;
-GlovFontDefaultStyle.prototype.glow_outer = 0;
-GlovFontDefaultStyle.prototype.glow_color = 0x00000000;
-GlovFontDefaultStyle.prototype.color = 0xFFFFFFff;
-GlovFontDefaultStyle.prototype.colorUR = 0;
-GlovFontDefaultStyle.prototype.colorLR = 0;
-GlovFontDefaultStyle.prototype.colorLL = 0;
-GlovFontDefaultStyle.prototype.color_mode = COLOR_MODE.SINGLE;
-
-class GlovFontStyle extends GlovFontDefaultStyle {
-}
+GlovFontStyle.prototype.outline_width = 0;
+GlovFontStyle.prototype.outline_color = 0x00000000;
+GlovFontStyle.prototype.glow_xoffs = 0;
+GlovFontStyle.prototype.glow_yoffs = 0;
+GlovFontStyle.prototype.glow_inner = 0;
+GlovFontStyle.prototype.glow_outer = 0;
+GlovFontStyle.prototype.glow_color = 0x00000000;
+GlovFontStyle.prototype.color = 0xFFFFFFff;
+GlovFontStyle.prototype.colorUR = 0;
+GlovFontStyle.prototype.colorLR = 0;
+GlovFontStyle.prototype.colorLL = 0;
+GlovFontStyle.prototype.color_mode = COLOR_MODE.SINGLE;
 
 export const font_shaders = {};
 
@@ -143,19 +140,11 @@ export function vec4ColorFromIntColor(v, c) {
   v[3] = (c & 0xFF) / 255;
 }
 
-function buildVec4ColorFromIntColor(c) {
-  return vec4(
-    ((c >> 24) & 0xFF) / 255,
-    ((c >> 16) & 0xFF) / 255,
-    ((c >> 8) & 0xFF) / 255,
-    (c & 0xFF) / 255
-  );
-}
-
 export const glov_font_default_style = new GlovFontStyle();
 
 export function style(font_style, fields) {
   let ret = new GlovFontStyle();
+  let { color_vec4 } = ret;
   if (font_style) {
     for (let f in font_style) {
       ret[f] = font_style[f];
@@ -164,6 +153,8 @@ export function style(font_style, fields) {
   for (let f in fields) {
     ret[f] = fields[f];
   }
+  ret.color_vec4 = color_vec4; // Restore
+  vec4ColorFromIntColor(ret.color_vec4, ret.color);
   return ret;
 }
 
@@ -661,7 +652,7 @@ class GlovFont {
               x - rel_x_scale * padding4[0], y - rel_y_scale * padding4[2] + char_info.yoffs * ysc2,
               z + z_advance * i, w, h,
               u0, v0, u1, v1,
-              buildVec4ColorFromIntColor(applied_style.color),
+              applied_style.color_vec4,
               this.shader, techParamsGet());
 
             // require('./ui.js').drawRect(x - rel_x_scale * padding4[0],
@@ -715,6 +706,7 @@ class GlovFont {
     this.applied_style.glow_outer = style.glow_outer;
     this.applied_style.glow_color = style.glow_color;
     this.applied_style.color = style.color;
+    this.applied_style.color_vec4 = style.color_vec4;
     this.applied_style.colorUR = style.colorUR;
     this.applied_style.colorLR = style.colorLR;
     this.applied_style.colorLL = style.colorLL;

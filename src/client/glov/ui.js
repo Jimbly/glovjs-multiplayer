@@ -23,6 +23,7 @@ const effects = require('./effects.js');
 const glov_engine = require('./engine.js');
 const glov_font = require('./font.js');
 const glov_input = require('./input.js');
+const { linkTick } = require('./link.js');
 const { abs, max, min, round, sqrt } = Math;
 const glov_sprites = require('./sprites.js');
 const textures = require('./textures.js');
@@ -988,6 +989,7 @@ export function tickUI(dt) {
 
   last_frame_edit_boxes = exports.this_frame_edit_boxes;
   exports.this_frame_edit_boxes = [];
+  linkTick();
 
   dom_elems_issued = 0;
 

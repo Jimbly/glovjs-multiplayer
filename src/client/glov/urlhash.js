@@ -11,8 +11,11 @@
     key: 'pos',
     // type: TYPE_STRING,
     change: (newvalue) => {},
+    title: (value) => 'string',
     def: '1,2',
     hides: { otherfield: true },
+    push: true, // do a pushState instead of replaceState when this changes
+    root: true, // URL should be foo.com/pos/1,2 instead of foo.com/?pos=1,2
   });
   urlhash.set('pos', '3,4');
   urlhash.get('pos')
@@ -27,9 +30,28 @@ export let TYPE_STRING = 'string';
 
 let params = {};
 
+let title_suffix = '';
+
+let url_base = (document.location.href || '').match(/^[^#?]+/)[0];
+
+export function getURLBase() {
+  return url_base;
+}
+
+function queryString() {
+  let href = String(document.location);
+  return href.slice(url_base.length);
+}
+
 const regex_value = /[^\w]\w+=([^&]+)/;
-function getValue(opts) {
-  let m = (document.location.hash || '').match(opts.regex) || [];
+function getValue(query_string, opts) {
+  if (opts.root) {
+    let m = query_string.match(opts.regex_root);
+    if (m) {
+      return m[1]; // otherwise try non-rooted format
+    }
+  }
+  let m = query_string.match(opts.regex) || [];
   if (opts.type === TYPE_SET) {
     let r = {};
     for (let ii = 0; ii < m.length; ++ii) {
@@ -45,13 +67,27 @@ function getValue(opts) {
 
 let last_history_str = null; // always re-set it on the first update
 
-function onPopState() {
-  last_history_str = String(document.location.hash).slice(1);
-  // Update all values
-  let dirty = {};
+function goInternal(query_string) { // with the '?'
+  // Update all values, except those hidden by what is currently in the query string
+  let hidden = {};
   for (let key in params) {
     let opts = params[key];
-    let new_value = getValue(opts);
+    if (opts.hides) {
+      if (getValue(query_string, opts)) {
+        for (let otherkey in opts.hides) {
+          hidden[otherkey] = 1;
+        }
+      }
+    }
+  }
+
+  let dirty = {};
+  for (let key in params) {
+    if (hidden[key]) {
+      continue;
+    }
+    let opts = params[key];
+    let new_value = getValue(query_string, opts);
     if (opts.type === TYPE_SET) {
       for (let v in new_value) {
         if (!opts.value[v]) {
@@ -82,7 +118,9 @@ function onPopState() {
   }
 }
 
+let eff_title;
 function toString() {
+  eff_title = '';
   let values = [];
   let hidden = {};
   for (let key in params) {
@@ -93,6 +131,7 @@ function toString() {
       }
     }
   }
+  let root_value = '';
   for (let key in params) {
     if (hidden[key]) {
       continue;
@@ -104,21 +143,56 @@ function toString() {
       }
     } else {
       if (opts.value !== opts.def) {
-        values.push(`${key}=${opts.value}`);
+        if (opts.root) {
+          assert(!root_value);
+          root_value = `${key}/${opts.value}`;
+        } else {
+          values.push(`${key}=${opts.value}`);
+        }
+        if (!eff_title && opts.title) {
+          eff_title = opts.title(opts.value);
+        }
       }
     }
   }
-  return values.join('&');
+  if (title_suffix) {
+    if (eff_title) {
+      eff_title = `${eff_title} | ${title_suffix}`;
+    } else {
+      eff_title = title_suffix;
+    }
+  }
+  return `${root_value}${values.length ? '?' : ''}${values.join('&')}`;
+}
+
+export function refreshTitle() {
+  toString();
+  if (eff_title && eff_title !== document.title) {
+    document.title = eff_title;
+  }
+}
+
+function periodicRefreshTitle() {
+  refreshTitle();
+  setTimeout(periodicRefreshTitle, 1000);
+}
+
+function onPopState() {
+  let query_string = queryString();
+  last_history_str = query_string;
+  goInternal(query_string);
+  refreshTitle();
 }
 
 let last_history_set_time = 0;
 let scheduled = false;
-// const URL_BASE = document.location.href.match(/^[^#]+/)[0];
-function updateHistory() {
+let need_push_state = false;
+function updateHistory(new_need_push_state) {
   let new_str = toString();
   if (last_history_str === new_str) {
     return;
   }
+  need_push_state = need_push_state || new_need_push_state;
   last_history_str = new_str;
   if (scheduled) {
     // already queued up
@@ -134,11 +208,32 @@ function updateHistory() {
   setTimeout(function () {
     scheduled = false;
     last_history_set_time = Date.now();
-    // window.history.replaceState('', HISTORY_TITLE, `${URL_BASE}#${last_history_str}`);
-    window.history.replaceState(undefined, undefined, `#${last_history_str}`);
+    if (need_push_state) {
+      need_push_state = false;
+      window.history.pushState(undefined, eff_title, `${url_base}${last_history_str}`);
+    } else {
+      window.history.replaceState(undefined, eff_title, `${url_base}${last_history_str}`);
+    }
+    if (eff_title) {
+      document.title = eff_title;
+    }
+    //window.history.replaceState(undefined, eff_title, `#${last_history_str}`);
   }, delay);
 }
 
+// Optional startup
+export function startup(param) {
+  assert(!title_suffix);
+  title_suffix = param.title_suffix;
+
+  // Refresh the current URL, it might be in the non-rooted format
+  updateHistory(false);
+
+  if (title_suffix) {
+    refreshTitle();
+    setTimeout(periodicRefreshTitle, 1000);
+  }
+}
 
 export function register(opts) {
   assert(opts.key);
@@ -152,9 +247,12 @@ export function register(opts) {
     opts.def = opts.def || '';
   }
   opts.regex = new RegExp(regex_search, regex_type);
+  if (opts.root) {
+    opts.regex_root = new RegExp(`^${opts.key}/([^?]+)`, regex_type);
+  }
   params[opts.key] = opts;
   // Get initial value
-  opts.value = getValue(opts);
+  opts.value = getValue(queryString(), opts);
   let ret = opts.value;
   if (opts.type === TYPE_SET && typeof Proxy === 'function') {
     // Auto-apply changes to URL if someone modifies the proxy
@@ -184,12 +282,12 @@ export function set(key, value, value2) {
   if (opts.type === TYPE_SET) {
     if (Boolean(opts.value[value]) !== Boolean(value2)) {
       opts.value[value] = value2 ? 1 : 0;
-      updateHistory();
+      updateHistory(opts.push);
     }
   } else {
     if (opts.value !== value) {
       opts.value = value;
-      updateHistory();
+      updateHistory(opts.push);
     }
   }
 }
@@ -198,4 +296,9 @@ export function get(key) {
   let opts = params[key];
   assert(opts);
   return opts.value;
+}
+
+export function go(query_string) { // with the '?'
+  goInternal(query_string);
+  updateHistory(true);
 }

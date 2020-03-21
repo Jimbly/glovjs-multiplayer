@@ -46,3 +46,7 @@ export function allowMapFromLocalhostOnly(app) {
     return next(`Cannot ${req.method} ${req.url}`);
   });
 }
+
+export function safeString(str) {
+  return str.replace(/["<>\\]/g, '');
+}
