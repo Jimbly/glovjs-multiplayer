@@ -72,6 +72,15 @@ export function sign(a) {
   return a < 0 ? -1 : a > 0 ? 1 : 0;
 }
 
+// log2 rounded up to nearest integer
+export function log2(val) {
+  for (let ii=1, jj=0; ; ii <<= 1, ++jj) { // eslint-disable-line no-bitwise
+    if (ii >= val) {
+      return jj;
+    }
+  }
+}
+
 export function ridx(arr, idx) {
   arr[idx] = arr[arr.length - 1];
   arr.pop();
