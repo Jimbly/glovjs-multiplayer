@@ -101,7 +101,7 @@ class ChannelServerWorker extends ChannelWorker {
   }
 }
 
-export const regex_valid_username = /^[a-z][a-z0-9_]+$/;
+export const regex_valid_username = /^[a-z][a-z0-9_]{1,32}$/;
 
 let inited = false;
 let user_worker = DefaultUserWorker;

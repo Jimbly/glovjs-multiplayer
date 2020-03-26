@@ -1,7 +1,7 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
 
-const ack = require('../../common/ack.js');
+const { ackWrapMessagePak } = require('../../common/ack.js');
 const assert = require('assert');
 const cmd_parse = require('../../common/cmd_parse.js');
 const { ChannelWorker } = require('./channel_worker.js');
@@ -9,14 +9,28 @@ const client_comm = require('./client_comm.js');
 const default_workers = require('./default_workers.js');
 const exchange = require('./exchange.js');
 const log = require('./log.js');
+const packet = require('../../common/packet.js');
+const { isPacket, packetCreate } = packet;
 const { clone, logdata } = require('../../common/util.js');
 const { inspect } = require('util');
 
 const { max } = Math;
 
+// Rough estimate, if over, will prevent resizing the packet
+const PAK_HEADER_SIZE = 1 + // flags
+  1+40 + // max channel_id length
+  1+9 + // packet index
+  1+100 + // source.ids (display_name, etc)
+  1+16 + // message id
+  1+9; // resp_pak_id
+
 // source is a ChannelWorker
 // dest is channel_id in the form of `type.id`
 export function channelServerSend(source, dest, msg, err, data, resp_func) {
+  let is_packet = isPacket(data);
+  // assert(!data || is_packet);
+  assert(typeof dest === 'string' && dest);
+  assert(typeof msg === 'string' || typeof msg === 'number');
   assert(source.channel_id);
   if ((!data || !data.q) && typeof msg === 'string') {
     console.debug(`${source.channel_id}->${dest}: ${msg} ${err ? `err:${logdata(err)}` : ''} ${logdata(data)}`);
@@ -24,14 +38,14 @@ export function channelServerSend(source, dest, msg, err, data, resp_func) {
   assert(source.send_pkt_idx);
   let pkt_idx = source.send_pkt_idx[dest] = (source.send_pkt_idx[dest] || 0) + 1;
 
-  assert(typeof dest === 'string' && dest);
-  assert(typeof msg === 'string' || typeof msg === 'number');
-  let net_data = ack.wrapMessage(source, msg, err, data, resp_func);
-  net_data.pkt_idx = pkt_idx;
-  net_data.src = source.channel_id;
-  if (source.ids) {
-    net_data.ids = source.ids;
-  }
+  let pak = packetCreate(is_packet ? data.flags : packet.default_flags,
+    is_packet ? data.totalSize() + (err ? err.length : 0) + PAK_HEADER_SIZE : 0);
+  pak.writeFlags();
+  pak.writeAnsiString(source.channel_id);
+  pak.writeInt(pkt_idx);
+  pak.writeJSON(source.ids || null);
+  ackWrapMessagePak(pak, source, msg, err, data, resp_func);
+  pak.makeReadable();
   if (!resp_func) {
     resp_func = function (err) {
       if (err) {
@@ -44,32 +58,37 @@ export function channelServerSend(source, dest, msg, err, data, resp_func) {
       }
     };
   }
+  function finalError(err) {
+    pak.pool();
+    return resp_func(err);
+  }
   let retries = 10;
   function trySend(prev_error) {
     if (!retries--) {
-      return resp_func(prev_error || 'RETRIES_EXHAUSTED');
+      return finalError(prev_error || 'RETRIES_EXHAUSTED');
     }
-    return exchange.publish(dest, net_data, function (err) {
+    return exchange.publish(dest, pak, function (err) {
       if (!err) {
         // Sent successfully, resp_func called when other side ack's.
+        pak.pool();
         return null;
       }
       if (err !== exchange.ERR_NOT_FOUND) {
         // Some error other than not finding the destination, should we do a retry?
-        return resp_func(err);
+        return finalError(err);
       }
       // Destination not found, should we create it?
       let [dest_type, dest_id] = dest.split('.');
       let channel_server = source.channel_server;
       let ctor = channel_server.channel_types[dest_type];
       if (!ctor) {
-        return resp_func('ERR_UNKNOWN_CHANNEL_TYPE');
+        return finalError('ERR_UNKNOWN_CHANNEL_TYPE');
       }
       if (!ctor.autocreate) {
-        return resp_func(err); // ERR_NOT_FOUND
+        return finalError(err); // ERR_NOT_FOUND
       }
       if (ctor.subid_regex && !dest_id.match(ctor.subid_regex)) {
-        return resp_func('ERR_INVALID_CHANNEL_ID');
+        return finalError('ERR_INVALID_CHANNEL_ID');
       }
       return channel_server.autoCreateChannel(dest_type, dest_id, function (err2) {
         if (err2) {

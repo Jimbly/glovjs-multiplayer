@@ -1,7 +1,9 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
+/* eslint no-bitwise:off */
 
 const assert = require('assert');
+const { isPacket } = require('../common/packet.js');
 
 export function ackInitReceiver(receiver) {
   receiver.last_pak_id = 0;
@@ -23,6 +25,64 @@ export function wrapMessage(receiver, msg, err, data, resp_func) {
   }
   return net_data;
 }
+const ACKFLAG_IS_RESP = 1<<3;
+const ACKFLAG_HAS_RESP = 1<<4;
+const ACKFLAG_ERR = 1<<5;
+const ACKFLAG_DATA = 1<<6;
+const ACKFLAG_DATA_JSON = 1<<7;
+export function ackWrapMessagePak(pak, receiver, msg, err, data, resp_func) {
+  let flags = 0;
+
+  if (typeof msg === 'number') {
+    flags |= ACKFLAG_IS_RESP;
+    pak.writeInt(msg);
+  } else {
+    pak.writeAnsiString(msg);
+  }
+  if (resp_func) {
+    flags |= ACKFLAG_HAS_RESP;
+    let resp_pak_id = ++receiver.last_pak_id;
+    receiver.resp_cbs[resp_pak_id] = resp_func;
+    pak.writeInt(resp_pak_id);
+  }
+  if (err) {
+    flags |= ACKFLAG_ERR;
+    pak.writeString(err);
+  }
+  if (data !== undefined) {
+    flags |= ACKFLAG_DATA;
+    if (!isPacket(data)) {
+      flags |= ACKFLAG_DATA_JSON;
+      pak.writeJSON(data);
+    } else {
+      pak.append(data);
+      data.pool();
+    }
+  }
+
+  pak.updateFlags(flags);
+}
+
+function ackReadHeader(pak) {
+  let flags = pak.getFlags();
+  let msg = (flags & ACKFLAG_IS_RESP) ? pak.readInt() : pak.readAnsiString();
+  let pak_id = (flags & ACKFLAG_HAS_RESP) ? pak.readInt() : undefined;
+  let err = (flags & ACKFLAG_ERR) ? pak.readString() : undefined;
+  let data;
+  if (flags & ACKFLAG_DATA) {
+    if (flags & ACKFLAG_DATA_JSON) {
+      data = pak.readJSON();
+    } else {
+      data = pak;
+    }
+  }
+  return {
+    msg,
+    err,
+    data,
+    pak_id,
+  };
+}
 
 export function failAll(receiver, err) {
   err = err || 'ERR_DISCONNECTED';
@@ -39,7 +99,8 @@ export function failAll(receiver, err) {
 // sendFunc(msg, err, data, resp_func)
 // handleFunc(msg, data, resp_func)
 // eslint-disable-next-line consistent-return
-export function ackHandleMessage(receiver, source, net_data, send_func, handle_func) {
+export function ackHandleMessage(receiver, source, net_data_or_pak, send_func, handle_func) {
+  let net_data = isPacket(net_data_or_pak) ? ackReadHeader(net_data_or_pak) : net_data_or_pak;
   let { err, data, msg, pak_id } = net_data;
   let now = Date.now();
   let expecting_response = Boolean(pak_id);

@@ -8,6 +8,7 @@ const glov_channel_server = require('./channel_server.js');
 const fs = require('fs');
 const log = require('./log.js');
 const path = require('path');
+const packet = require('../../common/packet.js');
 const glov_wsserver = require('./wsserver.js');
 const glov_wscommon = require('../../common/wscommon.js');
 
@@ -76,6 +77,10 @@ export function startup(params) {
   }
   ds_store = params.ds || data_store.create('data_store');
   channel_server = glov_channel_server.create();
+  if (argv.dev) {
+    console.log('PacketDebug: ON');
+    packet.default_flags = packet.PACKET_DEBUG;
+  }
 
   ws_server = glov_wsserver.create(params.server);
   ws_server.on('error', function (error) {

@@ -21,6 +21,7 @@ function throwErr(err) {
 }
 
 const PKT_LOG_SIZE = 16;
+const PKT_LOG_BUF_SIZE = 32;
 
 
 export class ChannelWorker {
@@ -585,7 +586,7 @@ export class ChannelWorker {
         delete this.pkt_queue[source];
       }
       // TODO: Make this not deeply recursive?
-      this.dispatchPacket(next_idx, next.source, next.ids, next.net_data);
+      this.dispatchPacket(next_idx, next.source, next.pak);
     }
   }
 
@@ -621,7 +622,7 @@ export class ChannelWorker {
     if (empty(q)) {
       delete this.pkt_queue[source];
     }
-    this.dispatchPacket(next_idx, next.source, next.ids, next.net_data);
+    this.dispatchPacket(next_idx, next.source, next.pak);
     // also dispatches any sequential queued up, and may clear/invalidate q_data
     if (this.pkt_queue[source]) {
       // still have remaining, non-sequential packets (untested, unexpected)
@@ -630,13 +631,20 @@ export class ChannelWorker {
     }
   }
 
-  dispatchPacket(pkt_idx, source, ids, net_data) {
+  dispatchPacket(pkt_idx, source, pak) {
+    let ids = pak.readJSON() || {};
+    let split = source.split('.');
+    assert.equal(split.length, 2);
+    ids.type = split[0];
+    ids.id = split[1];
+    ids.channel_id = source;
+
     let channel_worker = this;
-    channel_worker.logPacketDispatch(source, net_data);
+    channel_worker.logPacketDispatch(source, pak);
     channel_worker.channel_server.last_worker = channel_worker;
     channel_worker.recv_pkt_idx[source] = pkt_idx;
     try {
-      ackHandleMessage(channel_worker, source, net_data, function sendFunc(msg, err, data, resp_func) {
+      ackHandleMessage(channel_worker, source, pak, function sendFunc(msg, err, data, resp_func) {
         channelServerSend(channel_worker, source, msg, err, data, resp_func);
       }, function handleFunc(msg, data, resp_func) {
         channel_worker.channelMessage(ids, msg, data, resp_func);
@@ -649,21 +657,16 @@ export class ChannelWorker {
     this.checkPacketQueue(source);
   }
 
-  handleMessage(net_data) {
+  handleMessage(pak) {
     let channel_worker = this;
+    pak.readFlags();
     // source is a string channel_id
-    let source = net_data.src;
-    let ids = net_data.ids || {};
-    let split = source.split('.');
-    assert.equal(split.length, 2);
-    ids.type = split[0];
-    ids.id = split[1];
-    ids.channel_id = source;
-    let pkt_idx = net_data.pkt_idx;
+    let source = pak.readAnsiString();
+    let pkt_idx = pak.readInt();
     assert(pkt_idx);
     let expected_idx = (this.recv_pkt_idx[source] || 0) + 1;
     function dispatch() {
-      channel_worker.dispatchPacket(pkt_idx, source, ids, net_data);
+      channel_worker.dispatchPacket(pkt_idx, source, pak);
     }
     if (pkt_idx === expected_idx) {
       dispatch();
@@ -675,7 +678,7 @@ export class ChannelWorker {
       console.error(`${channel_worker.channel_id}: Received OOO packet with ID ${pkt_idx
       } (expected ${expected_idx}) from ${source}. Queuing...`);
       let q_data = channel_worker.pkt_queue[source] = channel_worker.pkt_queue[source] || { pkts: {} };
-      q_data.pkts[pkt_idx] = { source, ids, net_data };
+      q_data.pkts[pkt_idx] = { source, pak };
       if (!q_data.tid) {
         this.startPacketQueueCheck(source);
       }
@@ -683,8 +686,20 @@ export class ChannelWorker {
     this.checkAutoDestroy();
   }
 
-  logPacketDispatch(source, net_data) {
-    this.pkt_log[this.pkt_log_idx] = { ts: Date.now(), source, net_data };
+  logPacketDispatch(source, pak) {
+    let ple = this.pkt_log[this.pkt_log_idx];
+    if (!ple) {
+      ple = this.pkt_log[this.pkt_log_idx] = { data: Buffer.alloc(PKT_LOG_BUF_SIZE) };
+    }
+    // Copy first PKT_LOG_BUF_SIZE bytes for logging
+    let buf = pak.getBuffer();
+    let buf_len = pak.getBufferLen();
+    let buf_offs = pak.getOffset();
+    let data_len = min(PKT_LOG_BUF_SIZE, buf_len - buf_offs);
+    ple.ts = Date.now();
+    ple.source = source;
+    Buffer.prototype.copy.call(buf, ple.data, 0, buf_offs, buf_offs + data_len);
+    ple.data_len = data_len;
     this.pkt_log_idx = (this.pkt_log_idx + 1) % PKT_LOG_SIZE;
   }
 }

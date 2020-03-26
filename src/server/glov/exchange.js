@@ -2,11 +2,9 @@
 // Released under MIT License: https://opensource.org/licenses/MIT
 
 const assert = require('assert');
-const { logdata } = require('../../common/util.js');
+const { isPacket, packetFromBuffer } = require('../../common/packet.js');
 
 export const ERR_NOT_FOUND = 'ERR_NOT_FOUND';
-
-export const LOG_MESSAGES = false;
 
 let queues = {};
 let broadcasts = {};
@@ -33,29 +31,27 @@ export function unregister(id) {
   delete queues[id];
 }
 
+// pak and it's buffers are valid until cb() is called
 // cb(err)
-export function publish(dest, msg, cb) {
-  if (LOG_MESSAGES) {
-    console.debug(`exchange.publish ->${dest}: ${
-      msg.err ?
-        `err:${msg.err}` :
-        typeof msg.msg==='number' ?
-          `ack(${msg.msg})` :
-          msg.msg
-    }${msg.pak_id ? `(${msg.pak_id})` : ''} ${logdata(msg.data)}`);
-  }
-  // Force this async, msg is *not* serialized upon call, so this can be super-fast in-process later
+export function publish(dest, pak, cb) {
+  assert(isPacket(pak));
+  let buf = pak.getBuffer(); // Actually probably a Uint8Array - Buffer.from(buf.buffer, buf_len) will coerce to Buffer
+  let buf_len = pak.getBufferLen();
+  assert(buf_len);
+  // Force this async, pak is *not* serialized upon call, so this can be super-fast in-process later
   process.nextTick(function () {
     if (broadcasts[dest]) {
       for (let ii = 0; ii < broadcasts[dest].length; ++ii) {
-        broadcasts[dest][ii](msg);
+        let clone = packetFromBuffer(buf, buf_len, true);
+        broadcasts[dest][ii](clone);
       }
       return cb(null);
     }
     if (!queues[dest]) {
       return cb(ERR_NOT_FOUND);
     }
-    queues[dest](msg);
+    let clone = packetFromBuffer(buf, buf_len, true);
+    queues[dest](clone);
     return cb(null);
   });
 }

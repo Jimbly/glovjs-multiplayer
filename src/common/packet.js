@@ -6,7 +6,14 @@
 
 // Upon read, throw an exception if there is any data read error (e.g. read off of end of packet)
 
-const PACKET_DEBUG = exports.PACKET_DEBUG = 1;
+// 3 bits of flags reserved for internal use
+const PACKET_DEBUG = exports.PACKET_DEBUG = 1<<0;
+const PACKET_RESERVED1 = exports.PACKET_RESERVED1 = 1<<1;
+const PACKET_RESERVED2 = exports.PACKET_RESERVED2 = 1<<2;
+const FLAG_PACKET_INTERNAL = PACKET_DEBUG | PACKET_RESERVED1 | PACKET_RESERVED2;
+
+// Internal, runtime-only (not serialized) flags < 8 bits
+const PACKET_UNOWNED_BUFFER = 1 << 8;
 
 exports.default_flags = 0;
 
@@ -149,6 +156,7 @@ function Packet(flags, init_size, pak_debug) {
 }
 Packet.prototype.reinit = function (flags, init_size, pak_debug) {
   this.flags = flags;
+  this.wrote_flags = false;
   this.buf = null;
   this.buf_len = 0;
   this.buf_offs = 0;
@@ -160,6 +168,8 @@ Packet.prototype.reinit = function (flags, init_size, pak_debug) {
   this.pak_debug = pak_debug;
   if (init_size) {
     this.fit(init_size, true);
+    this.buf_len = init_size;
+    this.readable = true;
   }
 };
 Packet.prototype.ref = function () {
@@ -171,12 +181,16 @@ Packet.prototype.pool = function () {
     return;
   }
   // Do not clear on pool(), callers (readInt()) may still momentarily reference .buf, etc
-  if (this.buf) {
-    poolBuf(this.buf);
-  }
-  if (this.bufs) {
-    for (let ii = 0; ii < this.bufs.length; ++ii) {
-      poolBuf(this.bufs[ii]);
+  if (this.flags & PACKET_UNOWNED_BUFFER) {
+    // doing nothing with buffers, still pooling the packet
+  } else {
+    if (this.buf) {
+      poolBuf(this.buf);
+    }
+    if (this.bufs) {
+      for (let ii = 0; ii < this.bufs.length; ++ii) {
+        poolBuf(this.bufs[ii]);
+      }
     }
   }
   if (pak_pool.length < POOL_PACKETS) {
@@ -198,8 +212,23 @@ Packet.prototype.totalSize = function () {
   return ret;
 };
 
+// restoreLocation *must* be called
+Packet.prototype.saveLocation = function () {
+  assert(this.buf);
+  assert(!this.bufs);
+  assert(!this.no_pool);
+  this.no_pool = true;
+  return this.buf_offs;
+};
+
+Packet.prototype.restoreLocation = function (loc) {
+  this.buf_offs = loc;
+  this.no_pool = false;
+};
+
 Packet.prototype.makeReadable = function () {
   assert(this.buf);
+  assert(!this.readable); // otherwise just reset offset? or do nothing?
   this.readable = true;
   if (!this.bufs) {
     this.buf_len = this.buf_offs;
@@ -575,10 +604,52 @@ Packet.prototype.toJSON = function () {
   return ret;
 };
 
+Packet.prototype.setBuffer = function (buf, buf_len) {
+  assert(!this.buf);
+  assert(!this.bufs);
+  assert(this.flags & PACKET_UNOWNED_BUFFER); // Probably okay if not?
+  this.buf = buf;
+  this.buf_len = buf_len;
+  this.readable = true;
+};
+
 Packet.prototype.getBuffer = function () {
   assert(this.buf);
   assert(!this.bufs);
   return this.buf.u8;
+};
+
+Packet.prototype.getBufferLen = function () {
+  assert(this.buf);
+  assert(!this.bufs);
+  return this.readable ? this.buf_len : this.buf_offs;
+};
+
+Packet.prototype.getOffset = Packet.prototype.totalSize;
+
+Packet.prototype.writeFlags = function () {
+  assert(!this.wrote_flags);
+  assert.equal(this.buf_offs, 0);
+  this.writeU8(this.flags);
+  this.wrote_flags = true;
+};
+
+Packet.prototype.updateFlags = function (flags) {
+  assert(this.wrote_flags);
+  assert(!(flags & FLAG_PACKET_INTERNAL));
+  this.flags = this.flags & FLAG_PACKET_INTERNAL | flags;
+  let buf = this.bufs ? this.bufs[0] : this.buf;
+  buf.u8[0] = this.flags;
+};
+
+Packet.prototype.readFlags = function () {
+  let read = this.readU8();
+  assert.equal(read, this.flags & 0xFF);
+  return this.flags;
+};
+
+Packet.prototype.getFlags = function () {
+  return this.flags;
 };
 
 function PacketDebug(flags, init_size) {
@@ -633,7 +704,22 @@ types.forEach((type, idx) => {
   };
 });
 // Functions that simply fall through
-['totalSize', 'makeReadable', 'toJSON', 'pool', 'getBuffer', 'ref'].forEach((fname) => {
+[
+  'getBuffer',
+  'getBufferLen',
+  'getFlags',
+  'getOffset',
+  'makeReadable',
+  'pool',
+  'readFlags', // *not* wrapped in debug headers
+  'ref',
+  'restoreLocation',
+  'saveLocation',
+  'toJSON',
+  'totalSize',
+  'updateFlags',
+  'writeFlags', // *not* wrapped in debug headers
+].forEach((fname) => {
   let fn = Packet.prototype[fname];
   PacketDebug.prototype[fname] = function () {
     return fn.apply(this.pak, arguments); // eslint-disable-line prefer-rest-params
@@ -702,6 +788,27 @@ function packetCreate(flags, init_size) {
   return new Packet(flags, init_size);
 }
 exports.packetCreate = packetCreate;
+
+function packetFromBuffer(buf, buf_len, need_copy) {
+  let flags = buf[0];
+  assert.equal(typeof flags, 'number'); // `buf` should be a Buffer or Uint8Array, not a DataView like other funcs here
+  if (need_copy) {
+    assert(buf_len);
+    assert(buf.buffer instanceof ArrayBuffer);
+    let pak = packetCreate(flags, buf_len);
+    if (buf.byteLength !== buf_len) {
+      buf = Buffer.from(buf.buffer, 0, buf_len);
+    }
+    pak.getBuffer().set(buf);
+    return pak;
+  } else {
+    // reference unowned/unpoolable buffer
+    let pak = packetCreate(flags | PACKET_UNOWNED_BUFFER);
+    pak.setBuffer(buf, buf_len || buf.byteLength);
+    return pak;
+  }
+}
+exports.packetFromBuffer = packetFromBuffer;
 
 function packetFromJSON(js_obj) {
   let pak = packetCreate(js_obj.f);
