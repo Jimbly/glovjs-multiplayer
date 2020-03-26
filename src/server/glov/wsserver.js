@@ -2,6 +2,7 @@
 // Released under MIT License: https://opensource.org/licenses/MIT
 
 const ack = require('../../common/ack.js');
+const { ackInitReceiver } = ack;
 const assert = require('assert');
 const events = require('../../common/tiny-events.js');
 const node_util = require('util');
@@ -10,6 +11,7 @@ const { ipFromRequest } = require('./request_utils.js');
 const util = require('../../common/util.js');
 const url = require('url');
 const wscommon = require('../../common/wscommon.js');
+const { wsHandleMessage } = wscommon;
 const WebSocket = require('ws');
 
 function WSClient(ws_server, socket) {
@@ -23,7 +25,7 @@ function WSClient(ws_server, socket) {
   this.connected = true;
   this.disconnected = false;
   this.last_receive_time = Date.now();
-  ack.initReceiver(this);
+  ackInitReceiver(this);
   ws_server.clients[this.id] = this;
 }
 util.inherits(WSClient, events.EventEmitter);
@@ -112,7 +114,7 @@ WSServer.prototype.init = function (server) {
       client.onClose();
     });
     socket.on('message', function (data) {
-      wscommon.handleMessage(client, data);
+      wsHandleMessage(client, data);
     });
     socket.on('error', function (e) {
       // Not sure this exists on `ws`

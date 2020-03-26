@@ -3,7 +3,7 @@
 
 const assert = require('assert');
 
-export function initReceiver(receiver) {
+export function ackInitReceiver(receiver) {
   receiver.last_pak_id = 0;
   receiver.resp_cbs = {};
   receiver.responses_waiting = 0;
@@ -39,7 +39,7 @@ export function failAll(receiver, err) {
 // sendFunc(msg, err, data, resp_func)
 // handleFunc(msg, data, resp_func)
 // eslint-disable-next-line consistent-return
-export function handleMessage(receiver, source, net_data, send_func, handle_func) {
+export function ackHandleMessage(receiver, source, net_data, send_func, handle_func) {
   let { err, data, msg, pak_id } = net_data;
   let now = Date.now();
   let expecting_response = Boolean(pak_id);

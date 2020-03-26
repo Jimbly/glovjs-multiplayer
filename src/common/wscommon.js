@@ -2,6 +2,7 @@
 // Released under MIT License: https://opensource.org/licenses/MIT
 
 const ack = require('./ack.js');
+const { ackHandleMessage } = ack;
 const { logdata } = require('./util.js');
 
 export const LOG_MESSAGES = false;
@@ -27,7 +28,7 @@ export function sendMessage(msg, data, resp_func) {
   sendMessageInternal(this, msg, null, data, resp_func); // eslint-disable-line no-invalid-this
 }
 
-export function handleMessage(client, net_data) {
+export function wsHandleMessage(client, net_data) {
   let now = Date.now();
   let source = client.id ? `client ${client.id}` : 'server';
   try {
@@ -47,7 +48,7 @@ export function handleMessage(client, net_data) {
       net_data.err ? ` err:${net_data.err}` : ''} ${logdata(net_data.data)}`);
   }
 
-  return ack.handleMessage(client, source, net_data, function sendFunc(msg, err, data, resp_func) {
+  return ackHandleMessage(client, source, net_data, function sendFunc(msg, err, data, resp_func) {
     if (resp_func && !resp_func.expecting_response) {
       resp_func = null;
     }

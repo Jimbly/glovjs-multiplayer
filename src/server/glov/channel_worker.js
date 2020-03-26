@@ -2,6 +2,7 @@
 // Released under MIT License: https://opensource.org/licenses/MIT
 
 const ack = require('../../common/ack.js');
+const { ackHandleMessage, ackInitReceiver } = ack;
 const assert = require('assert');
 const { channelServerSend } = require('./channel_server.js');
 const dot_prop = require('dot-prop');
@@ -50,7 +51,7 @@ export class ChannelWorker {
     this.is_channel_worker = true; // TODO: Remove this?
     this.adding_client = null; // The client we're in the middle of adding, don't send them state updates yet
     this.last_msg_time = Date.now();
-    ack.initReceiver(this);
+    ackInitReceiver(this);
     // Handle modes that can be enabled via statics on prototype
     if (this.maintain_client_list) {
       this.data.public.clients = {};
@@ -635,7 +636,7 @@ export class ChannelWorker {
     channel_worker.channel_server.last_worker = channel_worker;
     channel_worker.recv_pkt_idx[source] = pkt_idx;
     try {
-      ack.handleMessage(channel_worker, source, net_data, function sendFunc(msg, err, data, resp_func) {
+      ackHandleMessage(channel_worker, source, net_data, function sendFunc(msg, err, data, resp_func) {
         channelServerSend(channel_worker, source, msg, err, data, resp_func);
       }, function handleFunc(msg, data, resp_func) {
         channel_worker.channelMessage(ids, msg, data, resp_func);

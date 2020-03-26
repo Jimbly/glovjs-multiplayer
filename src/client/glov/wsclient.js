@@ -3,10 +3,12 @@
 /* global WebSocket, XMLHttpRequest */
 
 const ack = require('../../common/ack.js');
+const { ackInitReceiver } = ack;
 const assert = require('assert');
 const { min } = Math;
 const walltime = require('./walltime.js');
 const wscommon = require('../../common/wscommon.js');
+const { wsHandleMessage } = wscommon;
 
 // let net_time = 0;
 // export function getNetTime() {
@@ -26,7 +28,7 @@ export function WSClient() {
   this.disconnect_time = Date.now();
   this.last_receive_time = Date.now();
   this.last_send_time = Date.now();
-  ack.initReceiver(this);
+  ackInitReceiver(this);
 
   let path = document.location.toString().match(/^[^#?]+/)[0]; // remove search and anchor
   if (path.slice(-1) !== '/') {
@@ -91,7 +93,7 @@ WSClient.prototype.onConnectAck = function (data, resp_func) {
     client.onAppVer(data.app_ver);
   }
   // Fire user-level connect handler as well
-  wscommon.handleMessage(client, JSON.stringify({
+  wsHandleMessage(client, JSON.stringify({
     msg: 'connect',
     data: {
       client_id: client.id,
@@ -214,7 +216,7 @@ WSClient.prototype.connect = function (for_reconnect) {
 
   client.socket.addEventListener('message', guard(function (data) {
     // net_time -= Date.now();
-    wscommon.handleMessage(client, data.data);
+    wsHandleMessage(client, data.data);
     // net_time += Date.now();
   }));
 
