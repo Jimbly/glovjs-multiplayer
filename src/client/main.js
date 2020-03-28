@@ -2,6 +2,7 @@
 const local_storage = require('./glov/local_storage.js');
 local_storage.storage_prefix = 'glovjs-multiplayer'; // Before requiring anything else that might load from this
 
+const assert = require('assert');
 const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const fs = require('fs');
@@ -165,8 +166,10 @@ export function main() {
   }
 
   function preLogout() {
-    if (test_room && test_room.subscriptions) {
+    if (test_room) {
+      assert(test_room.subscriptions);
       net.subs.unsubscribe(test_room.channel_id);
+      test_room = null;
     }
   }
 
@@ -242,7 +245,9 @@ export function main() {
     engine.setState(test);
 
     net.subs.onLogin(function () {
-      test_room = net.subs.getChannel('test.test', true);
+      if (!test_room) {
+        test_room = net.subs.getChannel('test.test', true);
+      }
       pos_manager.reinit({
         channel: test_room,
         default_pos: vec3(
