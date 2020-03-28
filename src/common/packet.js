@@ -155,7 +155,7 @@ function Packet(flags, init_size, pak_debug) {
   this.reinit(flags, init_size, pak_debug);
 }
 Packet.prototype.reinit = function (flags, init_size, pak_debug) {
-  this.flags = flags;
+  this.flags = flags || 0;
   this.wrote_flags = false;
   this.buf = null;
   this.buf_len = 0;
@@ -169,7 +169,6 @@ Packet.prototype.reinit = function (flags, init_size, pak_debug) {
   if (init_size) {
     this.fit(init_size, true);
     this.buf_len = init_size;
-    this.readable = true;
   }
 };
 Packet.prototype.ref = function () {
@@ -224,6 +223,13 @@ Packet.prototype.saveLocation = function () {
 Packet.prototype.restoreLocation = function (loc) {
   this.buf_offs = loc;
   this.no_pool = false;
+};
+
+Packet.prototype.setReadable = function () {
+  assert(this.buf);
+  assert(!this.bufs);
+  assert(!this.readable);
+  this.readable = true;
 };
 
 Packet.prototype.makeReadable = function () {
@@ -715,6 +721,7 @@ types.forEach((type, idx) => {
   'ref',
   'restoreLocation',
   'saveLocation',
+  'setReadable',
   'toJSON',
   'totalSize',
   'updateFlags',
@@ -800,11 +807,13 @@ function packetFromBuffer(buf, buf_len, need_copy) {
       buf = Buffer.from(buf.buffer, 0, buf_len);
     }
     pak.getBuffer().set(buf);
+    pak.setReadable();
     return pak;
   } else {
     // reference unowned/unpoolable buffer
     let pak = packetCreate(flags | PACKET_UNOWNED_BUFFER);
     pak.setBuffer(buf, buf_len || buf.byteLength);
+    pak.setReadable();
     return pak;
   }
 }

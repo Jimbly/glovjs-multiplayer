@@ -5,6 +5,7 @@ const assert = require('assert');
 const client_worker = require('./client_worker.js');
 const { channelServerSend } = require('./channel_server.js');
 const { regex_valid_username } = require('./default_workers.js');
+const { packetCreate } = require('../../common/packet.js');
 const { logdata } = require('../../common/util.js');
 const random_names = require('./random_names.js');
 
@@ -49,7 +50,11 @@ function onSetChannelData(client, data, resp_func) {
   }
 
   client_channel.ids = client_channel.ids_direct;
-  channelServerSend(client_channel, channel_id, 'set_channel_data', null, data);
+  let pak = packetCreate();
+  pak.writeBool(data.q);
+  pak.writeAnsiString(data.key);
+  pak.writeJSON(data.value);
+  channelServerSend(client_channel, channel_id, 'set_channel_data', null, pak, null, data.q);
   client_channel.ids = client_channel.ids_base;
   resp_func();
 }

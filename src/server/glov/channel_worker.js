@@ -365,16 +365,20 @@ export class ChannelWorker {
     }
   }
 
-  onSetChannelDataIf(source, data, resp_func) {
+  onSetChannelDataIf(source, pak, resp_func) {
     if (source.type === 'client') {
       // deny
       return resp_func('ERR_NOT_ALLOWED');
     }
-    let old_value = dot_prop.get(this.data, data.key);
-    if (old_value !== data.set_if) {
+    let q = pak.readBool();
+    let key = pak.readAnsiString();
+    let value = pak.readJSON();
+    let set_if = pak.readJSON();
+    let old_value = dot_prop.get(this.data, key);
+    if (old_value !== set_if) {
       return resp_func('ERR_SETIF_MISMATCH');
     }
-    this.setChannelDataInternal(source, data.key, data.value, data.q);
+    this.setChannelDataInternal(source, key, value, q);
     return resp_func();
   }
 
@@ -398,10 +402,10 @@ export class ChannelWorker {
     this.channel_server.ds_store.set(this.store_path, '', data);
   }
 
-  onSetChannelDataPush(source, data, resp_func) {
-    let { key, value } = data;
-    assert(typeof key === 'string');
-    assert(typeof source === 'object');
+  onSetChannelDataPush(source, pak, resp_func) {
+    let q = pak.readBool();
+    let key = pak.readAnsiString();
+    let value = pak.readJSON();
     if (this.handleSetChannelData ?
       !this.handleSetChannelData(source, key, value) :
       !this.defaultHandleSetChannelData(source, key, value)
@@ -430,9 +434,9 @@ export class ChannelWorker {
     if (key.startsWith('public')) {
       let mod_data;
       if (need_create) {
-        mod_data = { key, value: arr };
+        mod_data = { key, value: arr, q };
       } else {
-        mod_data = { key: `${key}.${idx}`, value };
+        mod_data = { key: `${key}.${idx}`, value, q };
       }
       this.channelEmit('apply_channel_data', mod_data, this.adding_client);
     }
@@ -440,8 +444,11 @@ export class ChannelWorker {
     return resp_func();
   }
 
-  onSetChannelData(source, data, resp_func) {
-    this.setChannelDataInternal(source, data.key, data.value, data.q, resp_func);
+  onSetChannelData(source, pak, resp_func) {
+    let q = pak.readBool();
+    let key = pak.readAnsiString();
+    let value = pak.readJSON();
+    this.setChannelDataInternal(source, key, value, q, resp_func);
   }
   setChannelData(key, value, q) {
     this.setChannelDataInternal(this.core_ids, key, value, q);

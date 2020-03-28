@@ -26,14 +26,15 @@ const PAK_HEADER_SIZE = 1 + // flags
 
 // source is a ChannelWorker
 // dest is channel_id in the form of `type.id`
-export function channelServerSend(source, dest, msg, err, data, resp_func) {
+export function channelServerSend(source, dest, msg, err, data, resp_func, q) {
   let is_packet = isPacket(data);
   // assert(!data || is_packet);
   assert(typeof dest === 'string' && dest);
   assert(typeof msg === 'string' || typeof msg === 'number');
   assert(source.channel_id);
-  if ((!data || !data.q) && typeof msg === 'string') {
-    console.debug(`${source.channel_id}->${dest}: ${msg} ${err ? `err:${logdata(err)}` : ''} ${logdata(data)}`);
+  if ((!data || !data.q) && !q && typeof msg === 'string') {
+    console.debug(`${source.channel_id}->${dest}: ${msg} ${err ? `err:${logdata(err)}` : ''} ${
+      is_packet ? '(pak)' : logdata(data)}`);
   }
   assert(source.send_pkt_idx);
   let pkt_idx = source.send_pkt_idx[dest] = (source.send_pkt_idx[dest] || 0) + 1;
