@@ -133,6 +133,7 @@ function SubscriptionManager(client) {
 
   this.first_connect = true;
   this.server_time = 0;
+  this.server_time_interp = 0;
   client.onMsg('connect', this.handleConnect.bind(this));
   client.onMsg('channel_msg', this.handleChannelMessage.bind(this));
   client.onMsg('server_time', this.handleServerTime.bind(this));
@@ -219,8 +220,8 @@ SubscriptionManager.prototype.handleChannelMessage = function (data, resp_func) 
   channel.handlers[msg](data, resp_func);
 };
 
-SubscriptionManager.prototype.handleServerTime = function (data) {
-  this.server_time = data;
+SubscriptionManager.prototype.handleServerTime = function (pak) {
+  this.server_time = pak.readInt();
   if (this.server_time < this.server_time_interp && this.server_time > this.server_time_interp - 250) {
     // slight time travel backwards, this one packet must have been delayed,
     // since we once got a packet quicker. Just ignore this, interpolate from

@@ -6,6 +6,7 @@ const { ackInitReceiver } = ack;
 const assert = require('assert');
 const events = require('../../common/tiny-events.js');
 const node_util = require('util');
+const { isPacket } = require('../../common/packet.js');
 const querystring = require('querystring');
 const { ipFromRequest } = require('./request_utils.js');
 const util = require('../../common/util.js');
@@ -173,12 +174,19 @@ WSServer.prototype.checkTimeouts = function () {
 WSServer.prototype.broadcast = function (msg, data) {
   let ws_server = this;
   let num_sent = 0;
+  let is_packet = isPacket(data);
   for (let client_id in ws_server.clients) {
     if (ws_server.clients[client_id]) {
       let client = ws_server.clients[client_id];
+      if (is_packet) {
+        data.ref();
+      }
       client.send(msg, data);
       ++num_sent;
     }
+  }
+  if (is_packet) {
+    data.pool();
   }
   return num_sent;
 };

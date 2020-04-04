@@ -78,6 +78,12 @@ function allocDataView(size) {
   return dv;
 }
 
+function wrapU8AsDataView(u8) {
+  let dv = new DataView(u8.buffer);
+  dv.u8 = u8;
+  return dv;
+}
+
 function utf8ByteLength(str) {
   let len = str.length;
   let ret = len;
@@ -156,7 +162,7 @@ function Packet(flags, init_size, pak_debug) {
 }
 Packet.prototype.reinit = function (flags, init_size, pak_debug) {
   this.flags = flags || 0;
-  this.wrote_flags = false;
+  this.has_flags = false;
   this.buf = null;
   this.buf_len = 0;
   this.buf_offs = 0;
@@ -614,7 +620,8 @@ Packet.prototype.setBuffer = function (buf, buf_len) {
   assert(!this.buf);
   assert(!this.bufs);
   assert(this.flags & PACKET_UNOWNED_BUFFER); // Probably okay if not?
-  this.buf = buf;
+  assert(buf instanceof Uint8Array);
+  this.buf = wrapU8AsDataView(buf);
   this.buf_len = buf_len;
   this.readable = true;
 };
@@ -634,14 +641,14 @@ Packet.prototype.getBufferLen = function () {
 Packet.prototype.getOffset = Packet.prototype.totalSize;
 
 Packet.prototype.writeFlags = function () {
-  assert(!this.wrote_flags);
+  assert(!this.has_flags);
   assert.equal(this.buf_offs, 0);
   this.writeU8(this.flags);
-  this.wrote_flags = true;
+  this.has_flags = true;
 };
 
 Packet.prototype.updateFlags = function (flags) {
-  assert(this.wrote_flags);
+  assert(this.has_flags);
   assert(!(flags & FLAG_PACKET_INTERNAL));
   this.flags = this.flags & FLAG_PACKET_INTERNAL | flags;
   let buf = this.bufs ? this.bufs[0] : this.buf;
@@ -651,6 +658,7 @@ Packet.prototype.updateFlags = function (flags) {
 Packet.prototype.readFlags = function () {
   let read = this.readU8();
   assert.equal(read, this.flags & 0xFF);
+  this.has_flags = true;
   return this.flags;
 };
 
@@ -721,6 +729,7 @@ types.forEach((type, idx) => {
   'ref',
   'restoreLocation',
   'saveLocation',
+  'setBuffer',
   'setReadable',
   'toJSON',
   'totalSize',
@@ -764,6 +773,9 @@ PacketDebug.prototype.contents = function () {
   let no_pool = pak.no_pool;
   pak.no_pool = 1;
   try {
+    if (pak.has_flags) {
+      ret.push(`flags:${pak.readU8()}`);
+    }
     while (pak.buf_offs < read_len) {
       let type_idx = pak.readU8();
       let type = types[type_idx];
@@ -783,6 +795,9 @@ PacketDebug.prototype.contents = function () {
 };
 
 function packetCreate(flags, init_size) {
+  if (flags === undefined) {
+    flags = exports.default_flags;
+  }
   let pool = (flags & PACKET_DEBUG) ? pak_debug_pool : pak_pool;
   if (pool.length) {
     let pak = pool.pop();
@@ -811,9 +826,9 @@ function packetFromBuffer(buf, buf_len, need_copy) {
     return pak;
   } else {
     // reference unowned/unpoolable buffer
+    assert(buf instanceof Uint8Array);
     let pak = packetCreate(flags | PACKET_UNOWNED_BUFFER);
     pak.setBuffer(buf, buf_len || buf.byteLength);
-    pak.setReadable();
     return pak;
   }
 }
@@ -852,3 +867,5 @@ function isPacket(thing) {
   return thing instanceof Packet || thing instanceof PacketDebug;
 }
 exports.isPacket = isPacket;
+
+// TODO: Change client connection to use binary WebSockets, and use packets there too

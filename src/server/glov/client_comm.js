@@ -103,6 +103,17 @@ function onChannelMsg(client, data, resp_func) {
   if (!resp_func.expecting_response) {
     resp_func = null;
   }
+  let old_resp_func = resp_func;
+  resp_func = function (err, resp_data) {
+    if (err) { // Was previously just on cmd_parse packets: && !(net_data.data && net_data.data.silent_error)) {
+      client.log(`Error "${err}" sent from ${data.channel_id} to client in response to ${
+        data.msg} ${logdata(data.data)}`);
+    }
+    if (old_resp_func) {
+      old_resp_func(err, resp_data);
+    }
+  };
+  resp_func.expecting_response = Boolean(old_resp_func);
   if (data.broadcast) {
     delete data.broadcast;
     channelServerSend(client_channel, channel_id, 'broadcast', null, data, resp_func);

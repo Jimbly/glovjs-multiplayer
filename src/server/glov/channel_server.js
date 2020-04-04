@@ -202,7 +202,9 @@ class ChannelServer {
     }
     this.server_time += dt;
     if (stall || this.server_time > this.last_server_time_send + this.server_time_send_interval) {
-      this.ws_server.broadcast('server_time', this.server_time);
+      let pak = packetCreate();
+      pak.writeInt(this.server_time);
+      this.ws_server.broadcast('server_time', pak);
       this.last_server_time_send = this.server_time;
     }
     for (let channel_id in this.local_channels) {

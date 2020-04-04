@@ -93,12 +93,10 @@ WSClient.prototype.onConnectAck = function (data, resp_func) {
     client.onAppVer(data.app_ver);
   }
   // Fire user-level connect handler as well
-  wsHandleMessage(client, JSON.stringify({
-    msg: 'connect',
-    data: {
-      client_id: client.id,
-    },
-  }));
+  assert(client.handlers.connect);
+  client.handlers.connect(client, {
+    client_id: client.id,
+  });
   resp_func();
 };
 
@@ -164,6 +162,7 @@ WSClient.prototype.connect = function (for_reconnect) {
     for_reconnect && client.id && client.secret ? `&reconnect=${client.id}&secret=${client.secret}` : ''
   }`;
   let socket = new WebSocket(path);
+  socket.binaryType = 'arraybuffer';
   client.socket = socket;
 
   // Protect callbacks from ever firing if we've already disconnected this socket
@@ -214,9 +213,10 @@ WSClient.prototype.connect = function (for_reconnect) {
     }
   }));
 
-  client.socket.addEventListener('message', guard(function (data) {
+  client.socket.addEventListener('message', guard(function (message) {
     // net_time -= Date.now();
-    wsHandleMessage(client, data.data);
+    assert(message.data instanceof ArrayBuffer);
+    wsHandleMessage(client, new Uint8Array(message.data));
     // net_time += Date.now();
   }));
 

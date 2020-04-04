@@ -3,7 +3,7 @@
 /* eslint no-bitwise:off */
 
 const assert = require('assert');
-const { isPacket } = require('../common/packet.js');
+const { isPacket } = require('./packet.js');
 
 export function ackInitReceiver(receiver) {
   receiver.last_pak_id = 0;
@@ -11,25 +11,12 @@ export function ackInitReceiver(receiver) {
   receiver.responses_waiting = 0;
 }
 
-// `receiver` is really the sender, here
-export function wrapMessage(receiver, msg, err, data, resp_func) {
-  assert(typeof msg === 'string' || typeof msg === 'number');
-  let net_data = {
-    msg: msg,
-    err: err,
-    data: data
-  };
-  if (resp_func) {
-    net_data.pak_id = ++receiver.last_pak_id;
-    receiver.resp_cbs[net_data.pak_id] = resp_func;
-  }
-  return net_data;
-}
 const ACKFLAG_IS_RESP = 1<<3;
 const ACKFLAG_HAS_RESP = 1<<4;
 const ACKFLAG_ERR = 1<<5;
 const ACKFLAG_DATA = 1<<6;
 const ACKFLAG_DATA_JSON = 1<<7;
+// `receiver` is really the sender, here, but will receive any response
 export function ackWrapMessagePak(pak, receiver, msg, err, data, resp_func) {
   let flags = 0;
 
