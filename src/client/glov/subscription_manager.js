@@ -7,6 +7,7 @@ const dot_prop = require('dot-prop');
 const EventEmitter = require('../../common/tiny-events.js');
 const local_storage = require('./local_storage.js');
 const md5 = require('../../common/md5.js');
+const { packetCreate } = require('../../common/packet.js');
 const util = require('../../common/util.js');
 
 // relevant events:
@@ -95,7 +96,12 @@ ClientChannelWorker.prototype.setChannelData = function (key, value, skip_predic
     dot_prop.set(this.data, key, value);
   }
   let q = value && value.q || undefined;
-  this.subs.client.send('set_channel_data', { channel_id: this.channel_id, key, value, q }, resp_func);
+  let pak = packetCreate();
+  pak.writeAnsiString(this.channel_id);
+  pak.writeBool(q);
+  pak.writeAnsiString(key);
+  pak.writeJSON(value);
+  this.subs.client.send('set_channel_data', pak, resp_func);
 };
 
 ClientChannelWorker.prototype.removeMsgHandler = function (msg, cb) {

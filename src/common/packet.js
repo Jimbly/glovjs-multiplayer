@@ -79,7 +79,7 @@ function allocDataView(size) {
 }
 
 function wrapU8AsDataView(u8) {
-  let dv = new DataView(u8.buffer);
+  let dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
   dv.u8 = u8;
   return dv;
 }
@@ -256,6 +256,7 @@ Packet.prototype.makeReadable = function () {
     let dv = this.bufs[ii];
     if (offs + bsize > total) {
       // unused portion would overrun
+      assert.equal(dv.byteOffset, 0);
       u8.set(new Uint8Array(dv.buffer, 0, bsize), offs);
     } else {
       u8.set(dv.u8, offs);
@@ -263,7 +264,8 @@ Packet.prototype.makeReadable = function () {
     offs += bsize;
     poolBuf(dv);
   }
-  u8.set(new Uint8Array(this.buf.buffer, 0, this.buf_offs), offs);
+  assert.equal(this.buf.byteOffset, 0); // Would handle it, but should never happen here, these are our pooled buffers?
+  u8.set(new Uint8Array(this.buf.buffer, this.buf.byteOffset, this.buf_offs), offs);
   poolBuf(this.buf);
   assert.equal(offs + this.buf_offs, total);
   this.bufs = this.bsizes = null;
@@ -570,14 +572,14 @@ Packet.prototype.readBool = function () {
 };
 
 Packet.prototype.append = function (pak) {
-  assert.equal(this.flags, pak.flags);
+  assert.equal(this.flags & FLAG_PACKET_INTERNAL, pak.flags & FLAG_PACKET_INTERNAL);
   if (pak.bufs) {
     for (let ii = 0; ii < pak.bufs.length; ++ii) {
       let buf = pak.bufs[ii];
       let bsize = pak.bsizes[ii];
       let offs = this.advance(bsize);
       if (bsize !== buf.byteLength) {
-        this.buf.u8.set(new Uint8Array(buf.buffer, 0, bsize), offs);
+        this.buf.u8.set(new Uint8Array(buf.buffer, buf.byteOffset, bsize), offs);
       } else {
         this.buf.u8.set(buf.u8, offs);
       }
@@ -588,10 +590,25 @@ Packet.prototype.append = function (pak) {
     let bsize = pak.readable ? pak.buf_len : pak.buf_offs;
     let offs = this.advance(bsize);
     if (bsize !== buf.byteLength) {
-      this.buf.u8.set(new Uint8Array(buf.buffer, 0, bsize), offs);
+      this.buf.u8.set(new Uint8Array(buf.buffer, buf.byteOffset, bsize), offs);
     } else {
       this.buf.u8.set(buf.u8, offs);
     }
+  }
+};
+
+Packet.prototype.appendRemaining = function (pak) {
+  assert.equal(this.flags & FLAG_PACKET_INTERNAL, pak.flags & FLAG_PACKET_INTERNAL);
+  assert(pak.readable);
+  assert(!pak.bufs);
+  assert(pak.buf);
+  assert(pak.buf_offs < pak.buf_len); // Maybe okay if equal?
+  let bsize = pak.buf_len - pak.buf_offs;
+  let offs = this.advance(bsize);
+  this.buf.u8.set(new Uint8Array(pak.buf.buffer, pak.buf.byteOffset + pak.buf_offs, bsize), offs);
+  if (!pak.no_pool) {
+    // everything consumed, pool it
+    pak.pool();
   }
 };
 
@@ -745,6 +762,10 @@ PacketDebug.prototype.append = function (pak) {
   assert(pak instanceof PacketDebug);
   this.pak.append(pak.pak);
 };
+PacketDebug.prototype.appendRemaining = function (pak) {
+  assert(pak instanceof PacketDebug);
+  this.pak.appendRemaining(pak.pak);
+};
 function format(v) {
   switch (typeof v) {
     case 'object':
@@ -867,5 +888,3 @@ function isPacket(thing) {
   return thing instanceof Packet || thing instanceof PacketDebug;
 }
 exports.isPacket = isPacket;
-
-// TODO: Change client connection to use binary WebSockets, and use packets there too

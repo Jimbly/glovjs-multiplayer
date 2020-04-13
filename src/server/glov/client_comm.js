@@ -5,7 +5,7 @@ const assert = require('assert');
 const client_worker = require('./client_worker.js');
 const { channelServerSend } = require('./channel_server.js');
 const { regex_valid_username } = require('./default_workers.js');
-const { packetCreate } = require('../../common/packet.js');
+const { isPacket, packetCreate } = require('../../common/packet.js');
 const { logdata } = require('../../common/util.js');
 const random_names = require('./random_names.js');
 
@@ -23,20 +23,23 @@ function onSubscribe(client, channel_id, resp_func) {
   client.client_channel.subscribeOther(channel_id, resp_func);
 }
 
-function onSetChannelData(client, data, resp_func) {
-  data.key = String(data.key);
-  let channel_id = data.channel_id;
+function onSetChannelData(client, pak, resp_func) {
+  assert(isPacket(pak));
+  let channel_id = pak.readAnsiString();
   assert(channel_id);
-
-  let key = data.key.split('.');
-  if (key[0] !== 'public' && key[0] !== 'private') {
-    console.error(` - failed, invalid scope: ${key[0]}`);
+  let q = pak.readBool();
+  let key = pak.readAnsiString();
+  let keyparts = key.split('.');
+  if (keyparts[0] !== 'public' && keyparts[0] !== 'private') {
+    console.error(` - failed, invalid scope: ${keyparts[0]}`);
     resp_func('failed: invalid scope');
+    pak.pool();
     return;
   }
-  if (!key[1]) {
+  if (!keyparts[1]) {
     console.error(' - failed, missing member name');
     resp_func('failed: missing member name');
+    pak.pool();
     return;
   }
 
@@ -46,15 +49,16 @@ function onSetChannelData(client, data, resp_func) {
   let client_channel = client.client_channel;
 
   if (!client_channel.isSubscribedTo(channel_id)) {
+    pak.pool();
     return void resp_func(`Client is not on channel ${channel_id}`);
   }
 
   client_channel.ids = client_channel.ids_direct;
-  let pak = packetCreate();
-  pak.writeBool(data.q);
-  pak.writeAnsiString(data.key);
-  pak.writeJSON(data.value);
-  channelServerSend(client_channel, channel_id, 'set_channel_data', null, pak, null, data.q);
+  let outpak = packetCreate(pak.flags);
+  outpak.writeBool(q);
+  outpak.writeAnsiString(key);
+  outpak.appendRemaining(pak);
+  channelServerSend(client_channel, channel_id, 'set_channel_data', null, outpak, null, q);
   client_channel.ids = client_channel.ids_base;
   resp_func();
 }
