@@ -668,8 +668,8 @@ export class ChannelWorker {
     let channel_worker = this;
     pak.readFlags();
     // source is a string channel_id
+    let pkt_idx = pak.readU32();
     let source = pak.readAnsiString();
-    let pkt_idx = pak.readInt();
     assert(pkt_idx);
     let expected_idx = (this.recv_pkt_idx[source] || 0) + 1;
     function dispatch() {

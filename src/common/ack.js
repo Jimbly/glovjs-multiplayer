@@ -50,6 +50,67 @@ export function ackWrapMessagePak(pak, receiver, msg, err, data, resp_func) {
   pak.updateFlags(flags);
 }
 
+export function ackWrapMessagePak2(pak, receiver, msg, need_resp) {
+  let flags = 0;
+
+  pak.ack_data = {
+    receiver,
+  };
+
+  if (typeof msg === 'number') {
+    flags |= ACKFLAG_IS_RESP;
+    pak.writeInt(msg);
+  } else {
+    pak.writeAnsiString(msg);
+  }
+  let resp_pak_id;
+  if (need_resp) {
+    flags |= ACKFLAG_HAS_RESP;
+    resp_pak_id = ++receiver.last_pak_id;
+    pak.ack_data.resp_pak_id = resp_pak_id;
+    pak.writeInt(resp_pak_id);
+  }
+
+  pak.ack_data.data_offs = pak.getOffset();
+  pak.ack_data.flags = flags;
+  return resp_pak_id;
+}
+
+export function ackWrapMessagePak2Payload(pak, data) {
+  if (data !== undefined) {
+    if (!isPacket(data)) {
+      pak.ack_data.flags |= ACKFLAG_DATA_JSON;
+      pak.writeJSON(data);
+    } else {
+      pak.append(data);
+      data.pool();
+    }
+  }
+}
+
+export function ackWrapMessagePak2Finish(pak, err, resp_func) {
+  let flags = pak.ack_data.flags;
+  let offs = pak.getOffset();
+  if (err) {
+    // Nothing else must have been written
+    assert.equal(pak.ack_data.data_offs, offs);
+    flags |= ACKFLAG_ERR;
+    pak.writeString(err);
+  } else {
+    if (offs !== pak.ack_data.data_offs) {
+      flags |= ACKFLAG_DATA; // Implicit, anyway?
+    }
+  }
+  if (resp_func) {
+    assert(flags & ACKFLAG_HAS_RESP);
+    pak.ack_data.receiver.resp_cbs[pak.ack_data.resp_pak_id] = resp_func;
+  } else {
+    assert(!(flags & ACKFLAG_HAS_RESP));
+  }
+  pak.updateFlags(flags);
+  delete pak.ack_data;
+}
+
 function ackReadHeader(pak) {
   let flags = pak.getFlags();
   let msg = (flags & ACKFLAG_IS_RESP) ? pak.readInt() : pak.readAnsiString();

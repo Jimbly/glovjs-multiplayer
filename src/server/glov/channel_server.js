@@ -1,7 +1,7 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
 
-const { ackWrapMessagePak } = require('../../common/ack.js');
+const { ackWrapMessagePak2, ackWrapMessagePak2Finish, ackWrapMessagePak2Payload } = require('../../common/ack.js');
 const assert = require('assert');
 const cmd_parse = require('../../common/cmd_parse.js');
 const { ChannelWorker } = require('./channel_worker.js');
@@ -24,29 +24,17 @@ const PAK_HEADER_SIZE = 1 + // flags
   1+16 + // message id
   1+9; // resp_pak_id
 
-// source is a ChannelWorker
-// dest is channel_id in the form of `type.id`
-export function channelServerSend(source, dest, msg, err, data, resp_func, q) {
-  let is_packet = isPacket(data);
-  // assert(!data || is_packet);
-  assert(typeof dest === 'string' && dest);
-  assert(typeof msg === 'string' || typeof msg === 'number');
-  assert(source.channel_id);
-  if ((!data || !data.q) && !q && typeof msg === 'string') {
-    console.debug(`${source.channel_id}->${dest}: ${msg} ${err ? `err:${logdata(err)}` : ''} ${
-      is_packet ? '(pak)' : logdata(data)}`);
-  }
-  assert(source.send_pkt_idx);
-  let pkt_idx = source.send_pkt_idx[dest] = (source.send_pkt_idx[dest] || 0) + 1;
 
-  let pak = packetCreate(is_packet ? data.flags : packet.default_flags,
-    is_packet ? data.totalSize() + (err ? err.length : 0) + PAK_HEADER_SIZE : 0);
-  pak.writeFlags();
-  pak.writeAnsiString(source.channel_id);
-  pak.writeInt(pkt_idx);
-  pak.writeJSON(source.ids || null);
-  ackWrapMessagePak(pak, source, msg, err, data, resp_func);
+function channelServerSendFinish(pak, resp_func) {
+  let { source, dest, msg, pkt_idx_offs, ack_resp_pkt_id } = pak.cs_data;
+  delete pak.cs_data;
+  let pkt_idx = source.send_pkt_idx[dest] = (source.send_pkt_idx[dest] || 0) + 1;
   pak.makeReadable();
+  let saved_offs = pak.getOffset(); // always 0, because we were made readable?
+  pak.seek(pkt_idx_offs);
+  pak.writeU32(pkt_idx);
+  pak.seek(saved_offs);
+  assert.equal(Boolean(resp_func), Boolean(ack_resp_pkt_id));
   if (!resp_func) {
     resp_func = function (err) {
       if (err) {
@@ -60,6 +48,10 @@ export function channelServerSend(source, dest, msg, err, data, resp_func, q) {
     };
   }
   function finalError(err) {
+    if (ack_resp_pkt_id) {
+      // Callback will never be dispatched through ack.js, remove the callback here
+      delete source.resp_cbs[ack_resp_pkt_id];
+    }
     pak.pool();
     return resp_func(err);
   }
@@ -102,6 +94,67 @@ export function channelServerSend(source, dest, msg, err, data, resp_func, q) {
     });
   }
   trySend();
+}
+
+function channelServerPakSend(resp_func) {
+  let pak = this; //eslint-disable-line no-invalid-this
+  ackWrapMessagePak2Finish(pak, null, resp_func);
+  channelServerSendFinish(pak, resp_func);
+}
+
+function channelServerPakSendErr(err) {
+  let pak = this; //eslint-disable-line no-invalid-this
+  ackWrapMessagePak2Finish(pak, err);
+  channelServerSendFinish(pak);
+}
+
+// source is a ChannelWorker
+// dest is channel_id in the form of `type.id`
+export function channelServerPak(source, dest, msg, need_resp, ref_pak, q, debug_msg) {
+  assert(typeof dest === 'string' && dest);
+  assert(typeof msg === 'string' || typeof msg === 'number');
+  assert(source.channel_id);
+  if (!q && typeof msg === 'string') {
+    console.debug(`${source.channel_id}->${dest}: ${msg} ${debug_msg || '(pak)'}`);
+  }
+  assert(source.send_pkt_idx);
+
+  // Assume new packet needs to be comparable to old packet, in flags and size
+  let pak = packetCreate(ref_pak ? ref_pak.getInternalFlags() : packet.default_flags,
+    ref_pak ? ref_pak.totalSize() + PAK_HEADER_SIZE : 0);
+  pak.writeFlags();
+  let pkt_idx_offs = pak.getOffset();
+  pak.writeU32(0);
+  pak.writeAnsiString(source.channel_id);
+  pak.writeJSON(source.ids || null);
+
+  let ack_resp_pkt_id = ackWrapMessagePak2(pak, source, msg, need_resp);
+
+  pak.cs_data = {
+    msg,
+    source,
+    dest,
+    pkt_idx_offs,
+    ack_resp_pkt_id,
+  };
+  pak.send = channelServerPakSend;
+  pak.sendErr = channelServerPakSendErr;
+  return pak;
+}
+
+export function channelServerSend(source, dest, msg, err, data, resp_func, q) {
+  let is_packet = isPacket(data);
+  assert(!is_packet);
+  let pak = channelServerPak(source, dest, msg, Boolean(resp_func), is_packet ? data : null, q || data && data.q,
+    !is_packet ? `${err ? `err:${logdata(err)}` : ''} ${logdata(data)}` : null);
+
+  ackWrapMessagePak2Payload(pak, data);
+
+  if (err) {
+    pak.sendErr(err);
+  } else {
+    pak.send(resp_func);
+  }
 }
 
 class ChannelServer {

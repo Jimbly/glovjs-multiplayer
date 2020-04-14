@@ -208,6 +208,9 @@ Packet.prototype.pool = function () {
 
 Packet.prototype.totalSize = function () {
   let ret = 0;
+  if (this.readable) {
+    return this.buf_len;
+  }
   if (this.bsizes) {
     for (let ii = 0; ii < this.bsizes.length; ++ii) {
       ret += this.bsizes[ii];
@@ -215,20 +218,6 @@ Packet.prototype.totalSize = function () {
   }
   ret += this.buf_offs;
   return ret;
-};
-
-// restoreLocation *must* be called
-Packet.prototype.saveLocation = function () {
-  assert(this.buf);
-  assert(!this.bufs);
-  assert(!this.no_pool);
-  this.no_pool = true;
-  return this.buf_offs;
-};
-
-Packet.prototype.restoreLocation = function (loc) {
-  this.buf_offs = loc;
-  this.no_pool = false;
 };
 
 Packet.prototype.setReadable = function () {
@@ -296,6 +285,7 @@ Packet.prototype.fit = function (extra_bytes, no_advance) {
     }
     return buf_offs;
   }
+  assert(!this.readable); // Shouldn't happen on concatenated buffers
   if (buf) {
     this.flush();
   }
@@ -422,6 +412,13 @@ Packet.prototype.readFloat = function () {
   }
   this.advance(3);
   return this.buf.getFloat32(offs, true);
+};
+Packet.prototype.writeU32 = function (v) {
+  assert.equal(typeof v, 'number');
+  this.buf.setUint32(this.fit(4), v, true);
+};
+Packet.prototype.readU32 = function () {
+  return this.buf.getUint32(this.advance(4), true);
 };
 Packet.prototype.writeString = function (v) {
   assert.equal(typeof v, 'string'); // Could maybe do a toString() here if not
@@ -657,6 +654,12 @@ Packet.prototype.getBufferLen = function () {
 
 Packet.prototype.getOffset = Packet.prototype.totalSize;
 
+Packet.prototype.seek = function (pos) {
+  assert(this.readable); // .makeReadable should be called so that it is a single buffer
+  assert(pos >= 0 && pos <= this.buf_len);
+  this.buf_offs = pos;
+};
+
 Packet.prototype.writeFlags = function () {
   assert(!this.has_flags);
   assert.equal(this.buf_offs, 0);
@@ -681,6 +684,10 @@ Packet.prototype.readFlags = function () {
 
 Packet.prototype.getFlags = function () {
   return this.flags;
+};
+
+Packet.prototype.getInternalFlags = function () {
+  return this.flags & FLAG_PACKET_INTERNAL;
 };
 
 function PacketDebug(flags, init_size) {
@@ -712,7 +719,7 @@ PacketDebug.prototype.poolDebug = function () {
     pak_debug_pool.push(this);
   }
 };
-const types = [null, 'U8', 'Int', 'Float', 'String', 'AnsiString', 'JSON', 'Bool'];
+const types = [null, 'U8', 'U32', 'Int', 'Float', 'String', 'AnsiString', 'JSON', 'Bool'];
 // Functions (types) that read and write a debug byte
 types.forEach((type, idx) => {
   if (!type) { // don't use debug ID 0
@@ -739,13 +746,13 @@ types.forEach((type, idx) => {
   'getBuffer',
   'getBufferLen',
   'getFlags',
+  'getInternalFlags',
   'getOffset',
   'makeReadable',
   'pool',
   'readFlags', // *not* wrapped in debug headers
   'ref',
-  'restoreLocation',
-  'saveLocation',
+  'seek',
   'setBuffer',
   'setReadable',
   'toJSON',

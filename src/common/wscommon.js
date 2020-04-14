@@ -29,7 +29,7 @@ function sendMessageInternal(client, msg, err, data, resp_func) {
   // assert(!data || is_packet);
   assert(typeof msg === 'string' || typeof msg === 'number');
 
-  let pak = packetCreate(is_packet ? data.flags : packet.default_flags,
+  let pak = packetCreate(is_packet ? data.getInternalFlags() : packet.default_flags,
     is_packet ? data.totalSize() + (err ? err.length : 0) + PAK_HEADER_SIZE : 0);
   pak.writeFlags();
   ackWrapMessagePak(pak, client, msg, err, data, resp_func);
