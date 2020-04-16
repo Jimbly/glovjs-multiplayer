@@ -4,7 +4,7 @@
 const ack = require('../../common/ack.js');
 const { ackHandleMessage, ackInitReceiver } = ack;
 const assert = require('assert');
-const { channelServerSend } = require('./channel_server.js');
+const { channelServerPak, channelServerSend } = require('./channel_server.js');
 const dot_prop = require('dot-prop');
 const exchange = require('./exchange.js');
 const { min } = Math;
@@ -653,6 +653,8 @@ export class ChannelWorker {
     try {
       ackHandleMessage(channel_worker, source, pak, function sendFunc(msg, err, data, resp_func) {
         channelServerSend(channel_worker, source, msg, err, data, resp_func);
+      }, function packFunc(msg, ref_pak) {
+        return channelServerPak(channel_worker, source, msg, ref_pak);
       }, function handleFunc(msg, data, resp_func) {
         channel_worker.channelMessage(ids, msg, data, resp_func);
       });

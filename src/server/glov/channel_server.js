@@ -96,14 +96,13 @@ function channelServerSendFinish(pak, err, resp_func) {
   trySend();
 }
 
-function channelServerPakSend(resp_func) {
+function channelServerPakSend(err, resp_func) {
   let pak = this; //eslint-disable-line no-invalid-this
-  channelServerSendFinish(pak, null, resp_func);
-}
-
-function channelServerPakSendErr(err) {
-  let pak = this; //eslint-disable-line no-invalid-this
-  channelServerSendFinish(pak, err, null);
+  if (typeof err === 'function' && !resp_func) {
+    resp_func = err;
+    err = null;
+  }
+  channelServerSendFinish(pak, err, resp_func);
 }
 
 // source is a ChannelWorker
@@ -135,23 +134,17 @@ export function channelServerPak(source, dest, msg, ref_pak, q, debug_msg) {
     pkt_idx_offs,
   };
   pak.send = channelServerPakSend;
-  pak.sendErr = channelServerPakSendErr;
   return pak;
 }
 
 export function channelServerSend(source, dest, msg, err, data, resp_func, q) {
   let is_packet = isPacket(data);
-  assert(!is_packet);
   let pak = channelServerPak(source, dest, msg, is_packet ? data : null, q || data && data.q,
     !is_packet ? `${err ? `err:${logdata(err)}` : ''} ${logdata(data)}` : null);
 
   ackWrapPakPayload(pak, data);
 
-  if (err) {
-    pak.sendErr(err);
-  } else {
-    pak.send(resp_func);
-  }
+  pak.send(err, resp_func);
 }
 
 class ChannelServer {

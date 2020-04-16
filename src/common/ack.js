@@ -38,9 +38,12 @@ export function ackWrapPakStart(pak, receiver, msg) {
 }
 
 export function ackWrapPakPayload(pak, data) {
-  assert(!isPacket(data));
-  pak.ack_data.flags |= ACKFLAG_DATA_JSON;
-  pak.writeJSON(data);
+  if (isPacket(data)) {
+    pak.appendRemaining(data);
+  } else {
+    pak.ack_data.flags |= ACKFLAG_DATA_JSON;
+    pak.writeJSON(data);
+  }
 }
 
 export function ackWrapPakFinish(pak, err, resp_func) {
@@ -104,7 +107,7 @@ export function failAll(receiver, err) {
 // sendFunc(msg, err, data, resp_func)
 // handleFunc(msg, data, resp_func)
 // eslint-disable-next-line consistent-return
-export function ackHandleMessage(receiver, source, net_data_or_pak, send_func, handle_func) {
+export function ackHandleMessage(receiver, source, net_data_or_pak, send_func, pak_func, handle_func) {
   let net_data = isPacket(net_data_or_pak) ? ackReadHeader(net_data_or_pak) : net_data_or_pak;
   let { err, data, msg, pak_id } = net_data;
   let now = Date.now();
@@ -116,9 +119,25 @@ export function ackHandleMessage(receiver, source, net_data_or_pak, send_func, h
   let sent_response = false;
   let start_time = now;
 
-  function respFunc(err, resp_data, resp_func) {
+  function preSendResp() {
     assert(!sent_response, 'Response function called twice');
     sent_response = true;
+
+    if (expecting_response) {
+      if (timeout_id) {
+        if (timeout_id !== 'pending') {
+          clearTimeout(timeout_id);
+        }
+      } else {
+        (receiver.log ? receiver : console).log(`Response finally sent for ${msg
+        } after ${((Date.now() - start_time) / 1000).toFixed(1)}s`);
+      }
+      receiver.responses_waiting--;
+    }
+  }
+
+  function respFunc(err, resp_data, resp_func) {
+    preSendResp();
     // the callback wants to send a response, and possibly get a response from that!
     if (!expecting_response) {
       // But, the other end is not expecting a response from this packet, black-hole it
@@ -134,18 +153,19 @@ export function ackHandleMessage(receiver, source, net_data_or_pak, send_func, h
       }
       return;
     }
-    if (timeout_id) {
-      if (timeout_id !== 'pending') {
-        clearTimeout(timeout_id);
-      }
-    } else {
-      (receiver.log ? receiver : console).log(`Response finally sent for ${msg
-      } after ${((Date.now() - start_time) / 1000).toFixed(1)}s`);
-    }
-    receiver.responses_waiting--;
     send_func(pak_id, err, resp_data, resp_func);
   }
   respFunc.expecting_response = expecting_response;
+  respFunc.pak = function (ref_pak) {
+    assert(expecting_response);
+    let pak = pak_func(pak_id, ref_pak);
+    let orig_send = pak.send;
+    pak.send = function (err, resp_func) {
+      preSendResp();
+      orig_send.call(pak, err, resp_func);
+    };
+    return pak;
+  };
 
   if (typeof msg === 'number') {
     let cb = receiver.resp_cbs[msg];

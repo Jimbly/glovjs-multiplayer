@@ -57,14 +57,13 @@ function wsPakSendFinish(pak, err, resp_func) {
   wsPakSendDest(client, pak);
 }
 
-function wsPakSend(resp_func) {
+function wsPakSend(err, resp_func) {
   let pak = this; //eslint-disable-line no-invalid-this
-  wsPakSendFinish(pak, null, resp_func);
-}
-
-function wsPakSendErr(err) {
-  let pak = this; //eslint-disable-line no-invalid-this
-  wsPakSendFinish(pak, err, null);
+  if (typeof err === 'function' && !resp_func) {
+    resp_func = err;
+    err = null;
+  }
+  wsPakSendFinish(pak, err, resp_func);
 }
 
 export function wsPak(msg, ref_pak, client) {
@@ -82,22 +81,16 @@ export function wsPak(msg, ref_pak, client) {
     client,
   };
   pak.send = wsPakSend;
-  pak.sendErr = wsPakSendErr;
   return pak;
 }
 
 function sendMessageInternal(client, msg, err, data, resp_func) {
   let is_packet = isPacket(data);
-  assert(!is_packet);
   let pak = wsPak(msg, is_packet ? data : null, client);
 
   ackWrapPakPayload(pak, data);
 
-  if (err) {
-    pak.sendErr(err);
-  } else {
-    pak.send(resp_func);
-  }
+  pak.send(err, resp_func);
 }
 
 export function sendMessage(msg, data, resp_func) {
@@ -120,6 +113,8 @@ export function wsHandleMessage(client, buf) {
       resp_func = null;
     }
     sendMessageInternal(client, msg, err, data, resp_func);
+  }, function pakFunc(msg, ref_pak) {
+    return wsPak(msg, ref_pak, client);
   }, function handleFunc(msg, data, resp_func) {
     let handler = client.handlers[msg];
     if (!handler) {

@@ -3,6 +3,7 @@ const local_storage = require('./glov/local_storage.js');
 local_storage.storage_prefix = 'glovjs-multiplayer'; // Before requiring anything else that might load from this
 
 const assert = require('assert');
+const { cmd_parse } = require('./glov/cmds.js');
 const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
 const fs = require('fs');
@@ -37,6 +38,22 @@ export const game_width = 1280;
 export const game_height = 960;
 
 export let sprites = {};
+
+cmd_parse.register({
+  cmd: 'bin_get',
+  func: function (str, resp_func) {
+    app.chat_ui.channel.send('bin_get', str, null, function (err, data) {
+      resp_func(err, data.readString());
+    });
+  },
+});
+
+cmd_parse.register({
+  cmd: 'bin_set',
+  func: function (str, resp_func) {
+    app.chat_ui.channel.send('bin_set', str, null, resp_func);
+  },
+});
 
 export function main() {
   net.init({ engine });

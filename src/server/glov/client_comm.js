@@ -58,7 +58,7 @@ function onSetChannelData(client, pak, resp_func) {
   outpak.writeBool(q);
   outpak.writeAnsiString(key);
   outpak.appendRemaining(pak);
-  outpak.send(null);
+  outpak.send();
   client_channel.ids = client_channel.ids_base;
   resp_func();
 }
