@@ -1,14 +1,13 @@
 const assert = require('assert');
 const { packetCreate, packetFromJSON, PACKET_DEBUG } = require('../common/packet.js');
 
-// const test_array_buf = (function () {
-//   let ret = new ArrayBuffer(8);
-//   let u8 = new Uint8Array(ret);
-//   u8[1] = 1;
-//   u8[3] = 2;
-//   u8[7] = 3;
-//   return ret;
-// }());
+const test_u8_buf = (function () {
+  let u8 = new Uint8Array(8);
+  u8[1] = 1;
+  u8[3] = 2;
+  u8[7] = 3;
+  return u8;
+}());
 
 const flags = [0, PACKET_DEBUG];
 
@@ -22,7 +21,7 @@ function doTest() {
     ['String', 'seven'],
     ['AnsiString', 'seven times seven'],
     ['JSON', { seven: 7 }],
-    // ['Buffer', test_array_buf],
+    ['Buffer', test_u8_buf],
     ['Bool', true]
   ];
 

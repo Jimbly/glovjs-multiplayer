@@ -6,11 +6,15 @@ class TestWorker extends ChannelWorker {
   // }
   handleBinGet(src, pak, resp_func) {
     let resp = resp_func.pak();
-    resp.writeString(this.test_bin || 'default');
+    resp.writeBuffer(this.test_bin || new Uint8Array(0));
     resp.send();
   }
   handleBinSet(src, pak, resp_func) {
-    this.test_bin = pak.readString();
+    let buf = pak.readBuffer(false);
+    if (buf.length > 100) {
+      return void resp_func('Too big');
+    }
+    this.test_bin = buf;
     resp_func();
   }
 }

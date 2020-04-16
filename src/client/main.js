@@ -16,6 +16,7 @@ const shaders = require('./glov/shaders.js');
 const glov_sprites = require('./glov/sprites.js');
 const sprite_animation = require('./glov/sprite_animation.js');
 const ui = require('./glov/ui.js');
+const { toNumber } = require('../common/util.js');
 
 const particle_data = require('./particle_data.js');
 const { vec2, vec3, v2sub, vec4, v4copy } = require('./glov/vmath.js');
@@ -42,8 +43,11 @@ export let sprites = {};
 cmd_parse.register({
   cmd: 'bin_get',
   func: function (str, resp_func) {
-    app.chat_ui.channel.pak('bin_get').send(function (err, data) {
-      resp_func(err, data && data.readString());
+    app.chat_ui.channel.pak('bin_get').send(function (err, pak) {
+      if (err) {
+        return void resp_func(err);
+      }
+      resp_func(null, pak.readBuffer(false).join(','));
     });
   },
 });
@@ -52,7 +56,7 @@ cmd_parse.register({
   cmd: 'bin_set',
   func: function (str, resp_func) {
     let pak = app.chat_ui.channel.pak('bin_set');
-    pak.writeString(str);
+    pak.writeBuffer(new Uint8Array(str.split(' ').map(toNumber)));
     pak.send(resp_func);
   },
 });

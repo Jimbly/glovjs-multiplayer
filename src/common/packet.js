@@ -8,7 +8,7 @@
 
 // TODO: Maybe: Have 2 offsets, one for writing (data_len?), one for reading (buf_offs?),
 //   then there should be many fewer ?pak.readable branches
-//   that return different values under different circumstances, and may fewer .makeReadable() calls needed.
+//   that return different values under different circumstances, and maybe fewer .makeReadable() calls needed.
 
 
 // 3 bits of flags reserved for internal use
@@ -594,11 +594,28 @@ Packet.prototype.readJSON = function () {
   let str = this.readString();
   return JSON.parse(str);
 };
-// // ArrayBuffer, Uint8Array or Buffer object?
-// Packet.prototype.writeBuffer = function (v) {
-// };
-// Packet.prototype.readBuffer = function () {
-// };
+// Uint8Array or Buffer object?
+Packet.prototype.writeBuffer = function (v) {
+  this.writeInt(v.length);
+  if (v.length) {
+    let offs = this.fit(v.length);
+    this.buf.u8.set(v, offs);
+  }
+};
+const null_buf = new Uint8Array(0);
+Packet.prototype.readBuffer = function (do_copy) {
+  let len = this.readInt();
+  if (!len) {
+    return null_buf;
+  }
+  let offs = this.advance(len);
+  if (do_copy) {
+    return this.buf.u8.slice(offs, len);
+  } else {
+    let { buf } = this;
+    return new Uint8Array(buf.buffer, buf.byteOffset + offs, len);
+  }
+};
 Packet.prototype.writeBool = function (v) {
   this.writeU8(v?1:0);
 };
@@ -612,7 +629,7 @@ Packet.prototype.append = function (pak) {
     for (let ii = 0; ii < pak.bufs.length; ++ii) {
       let buf = pak.bufs[ii];
       let bsize = pak.bsizes[ii];
-      let offs = this.advance(bsize);
+      let offs = this.fit(bsize);
       if (bsize !== buf.byteLength) {
         this.buf.u8.set(new Uint8Array(buf.buffer, buf.byteOffset, bsize), offs);
       } else {
@@ -623,7 +640,7 @@ Packet.prototype.append = function (pak) {
   if (pak.buf) {
     let buf = pak.buf;
     let bsize = pak.readable ? pak.buf_len : pak.buf_offs;
-    let offs = this.advance(bsize);
+    let offs = this.fit(bsize);
     if (bsize !== buf.byteLength) {
       this.buf.u8.set(new Uint8Array(buf.buffer, buf.byteOffset, bsize), offs);
     } else {
@@ -640,7 +657,7 @@ Packet.prototype.appendRemaining = function (pak) {
   assert(pak.buf_offs <= pak.buf_len);
   let bsize = pak.buf_len - pak.buf_offs;
   if (bsize) {
-    let offs = this.advance(bsize);
+    let offs = this.fit(bsize);
     this.buf.u8.set(new Uint8Array(pak.buf.buffer, pak.buf.byteOffset + pak.buf_offs, bsize), offs);
   }
   // everything consumed, pool it
@@ -757,7 +774,7 @@ PacketDebug.prototype.poolDebug = function () {
     pak_debug_pool.push(this);
   }
 };
-const types = [null, 'U8', 'U32', 'Int', 'Float', 'String', 'AnsiString', 'JSON', 'Bool'];
+const types = [null, 'U8', 'U32', 'Int', 'Float', 'String', 'AnsiString', 'JSON', 'Bool', 'Buffer'];
 // Functions (types) that read and write a debug byte
 types.forEach((type, idx) => {
   if (!type) { // don't use debug ID 0
@@ -771,12 +788,12 @@ types.forEach((type, idx) => {
     this.pak.writeU8(idx);
     write_fn.call(this.pak, v);
   };
-  PacketDebug.prototype[read] = function () {
+  PacketDebug.prototype[read] = function (param) {
     let found_idx = this.pak.readU8();
     if (found_idx !== idx) {
       assert(false, `PacketDebug error: Expected ${type}(${idx}), found ${types[found_idx]}(${found_idx})`);
     }
-    return read_fn.call(this.pak);
+    return read_fn.call(this.pak, param);
   };
 });
 PacketDebug.prototype.zeroInt = function () {
