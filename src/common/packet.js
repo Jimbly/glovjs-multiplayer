@@ -234,13 +234,13 @@ Packet.prototype.setReadable = function () {
 Packet.prototype.makeReadable = function () {
   assert(this.buf);
   assert(!this.readable); // otherwise just reset offset? or do nothing?
+  let total = this.totalSize(); // before this.readable = true
   this.readable = true;
   if (!this.bufs) {
-    this.buf_len = this.buf_offs;
+    this.buf_len = total;
     this.buf_offs = 0;
     return;
   }
-  let total = this.totalSize();
   let buf = allocDataView(total);
   let u8 = buf.u8;
   let offs = 0;
