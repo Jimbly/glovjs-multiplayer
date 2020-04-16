@@ -1,7 +1,7 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
 
-const { ackWrapMessagePak2, ackWrapMessagePak2Finish, ackWrapMessagePak2Payload } = require('../../common/ack.js');
+const { ackWrapPakStart, ackWrapPakFinish, ackWrapPakPayload } = require('../../common/ack.js');
 const assert = require('assert');
 const cmd_parse = require('../../common/cmd_parse.js');
 const { ChannelWorker } = require('./channel_worker.js');
@@ -25,11 +25,11 @@ const PAK_HEADER_SIZE = 1 + // flags
   1+9; // resp_pak_id
 
 
-function channelServerSendFinish(pak, resp_func) {
-  let { source, dest, msg, pkt_idx_offs, ack_resp_pkt_id } = pak.cs_data;
+function channelServerSendFinish(pak, err, resp_func) {
+  let ack_resp_pkt_id = ackWrapPakFinish(pak, err, resp_func);
+  let { source, dest, msg, pkt_idx_offs } = pak.cs_data;
   delete pak.cs_data;
   let pkt_idx = source.send_pkt_idx[dest] = (source.send_pkt_idx[dest] || 0) + 1;
-  pak.makeReadable();
   let saved_offs = pak.getOffset(); // always 0, because we were made readable?
   pak.seek(pkt_idx_offs);
   pak.writeU32(pkt_idx);
@@ -98,19 +98,17 @@ function channelServerSendFinish(pak, resp_func) {
 
 function channelServerPakSend(resp_func) {
   let pak = this; //eslint-disable-line no-invalid-this
-  ackWrapMessagePak2Finish(pak, null, resp_func);
-  channelServerSendFinish(pak, resp_func);
+  channelServerSendFinish(pak, null, resp_func);
 }
 
 function channelServerPakSendErr(err) {
   let pak = this; //eslint-disable-line no-invalid-this
-  ackWrapMessagePak2Finish(pak, err);
-  channelServerSendFinish(pak);
+  channelServerSendFinish(pak, err, null);
 }
 
 // source is a ChannelWorker
 // dest is channel_id in the form of `type.id`
-export function channelServerPak(source, dest, msg, need_resp, ref_pak, q, debug_msg) {
+export function channelServerPak(source, dest, msg, ref_pak, q, debug_msg) {
   assert(typeof dest === 'string' && dest);
   assert(typeof msg === 'string' || typeof msg === 'number');
   assert(source.channel_id);
@@ -128,14 +126,13 @@ export function channelServerPak(source, dest, msg, need_resp, ref_pak, q, debug
   pak.writeAnsiString(source.channel_id);
   pak.writeJSON(source.ids || null);
 
-  let ack_resp_pkt_id = ackWrapMessagePak2(pak, source, msg, need_resp);
+  ackWrapPakStart(pak, source, msg);
 
   pak.cs_data = {
     msg,
     source,
     dest,
     pkt_idx_offs,
-    ack_resp_pkt_id,
   };
   pak.send = channelServerPakSend;
   pak.sendErr = channelServerPakSendErr;
@@ -145,10 +142,10 @@ export function channelServerPak(source, dest, msg, need_resp, ref_pak, q, debug
 export function channelServerSend(source, dest, msg, err, data, resp_func, q) {
   let is_packet = isPacket(data);
   assert(!is_packet);
-  let pak = channelServerPak(source, dest, msg, Boolean(resp_func), is_packet ? data : null, q || data && data.q,
+  let pak = channelServerPak(source, dest, msg, is_packet ? data : null, q || data && data.q,
     !is_packet ? `${err ? `err:${logdata(err)}` : ''} ${logdata(data)}` : null);
 
-  ackWrapMessagePak2Payload(pak, data);
+  ackWrapPakPayload(pak, data);
 
   if (err) {
     pak.sendErr(err);
@@ -255,9 +252,9 @@ class ChannelServer {
     }
     this.server_time += dt;
     if (stall || this.server_time > this.last_server_time_send + this.server_time_send_interval) {
-      let pak = packetCreate();
+      let pak = this.ws_server.wsPak('server_time');
       pak.writeInt(this.server_time);
-      this.ws_server.broadcast('server_time', pak);
+      this.ws_server.broadcastPacket(pak);
       this.last_server_time_send = this.server_time;
     }
     for (let channel_id in this.local_channels) {

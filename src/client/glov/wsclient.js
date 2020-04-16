@@ -101,6 +101,10 @@ WSClient.prototype.onConnectAck = function (data, resp_func) {
 };
 
 
+WSClient.prototype.wsPak = function (msg) {
+  return wscommon.wsPak(msg, null, this);
+};
+
 WSClient.prototype.send = function (msg, data, resp_func) {
   wscommon.sendMessage.call(this, msg, data, resp_func);
 };

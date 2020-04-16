@@ -6,6 +6,11 @@
 
 // Upon read, throw an exception if there is any data read error (e.g. read off of end of packet)
 
+// TODO: Maybe: Have 2 offsets, one for writing (data_len?), one for reading (buf_offs?),
+//   then there should be many fewer ?pak.readable branches
+//   that return different values under different circumstances, and may fewer .makeReadable() calls needed.
+
+
 // 3 bits of flags reserved for internal use
 const PACKET_DEBUG = exports.PACKET_DEBUG = 1<<0;
 const PACKET_RESERVED1 = exports.PACKET_RESERVED1 = 1<<1;
@@ -358,6 +363,37 @@ Packet.prototype.writeInt = function (v) {
     }
   }
   this.buf_offs = offs;
+};
+Packet.prototype.zeroInt = function () {
+  // Overwrite an existing int with a zero, keeping the same packed size
+  let b1 = this.buf.u8[this.buf_offs];
+  if (b1 < 248) {
+    this.buf.u8[this.buf_offs++] = 0;
+    return;
+  }
+  // Otherwise, leave header bit
+  this.buf_offs++;
+  let zeroes = 1;
+  switch (b1) {
+    case 253:
+    case 252: // 8
+      zeroes += 4;
+    case 251:  // eslint-disable-line no-fallthrough
+    case 250: // 4
+      zeroes += 2;
+    case 249:  // eslint-disable-line no-fallthrough
+    case 248: // 2
+      zeroes++;
+    case 255:  // eslint-disable-line no-fallthrough
+      // 1
+      break;
+    default:
+      throw new Error('PKTERR_PACKED_INT');
+  }
+  while (zeroes) {
+    --zeroes;
+    this.buf[this.buf_offs++] = 0;
+  }
 };
 Packet.prototype.readInt = function () {
   let b1 = this.buf.u8[this.advance(1)];
@@ -741,6 +777,10 @@ types.forEach((type, idx) => {
     return read_fn.call(this.pak);
   };
 });
+PacketDebug.prototype.zeroInt = function () {
+  this.pak.writeU8(3); // types.indexof('Int')
+  this.pak.zeroInt();
+};
 // Functions that simply fall through
 [
   'getBuffer',

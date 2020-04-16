@@ -3,7 +3,7 @@
 
 const ack = require('./ack.js');
 const assert = require('assert');
-const { ackHandleMessage, ackWrapMessagePak } = ack;
+const { ackHandleMessage, ackWrapPakStart, ackWrapPakPayload, ackWrapPakFinish } = ack;
 const packet = require('./packet.js');
 const { isPacket, packetCreate, packetFromBuffer } = packet;
 
@@ -16,25 +16,12 @@ const PAK_HEADER_SIZE = 1 + // flags
   1+16 + // message id
   1+9; // resp_pak_id
 
-function sendMessageInternal(client, msg, err, data, resp_func) {
-  if (!client.connected || client.socket.readyState !== 1) { // WebSocket.OPEN
-    (client.log ? client : console).log('Attempting to send on a disconnected link, ignoring', { msg, err, data });
-    if (!client.log && client.onError && msg && typeof msg !== 'number') {
-      // On the client, if we try to send a new packet while disconnected, this is an application error
-      client.onError(`Attempting to send msg=${msg} on a disconnected link`);
-    }
+export function wsPakSendDest(client, pak) {
+  if (!client.connected || client.socket.readyState !== 1) {
+    console.error('Attempting to send on a disconnected link (internal), ignoring');
+    pak.pool();
     return;
   }
-  let is_packet = isPacket(data);
-  // assert(!data || is_packet);
-  assert(typeof msg === 'string' || typeof msg === 'number');
-
-  let pak = packetCreate(is_packet ? data.getInternalFlags() : packet.default_flags,
-    is_packet ? data.totalSize() + (err ? err.length : 0) + PAK_HEADER_SIZE : 0);
-  pak.writeFlags();
-  ackWrapMessagePak(pak, client, msg, err, data, resp_func);
-  pak.makeReadable();
-
   let buf = pak.getBuffer(); // a Uint8Array
   let buf_len = pak.getBufferLen();
   if (buf_len !== buf.length) {
@@ -43,6 +30,74 @@ function sendMessageInternal(client, msg, err, data, resp_func) {
   client.socket.send(buf);
   client.last_send_time = Date.now();
   pak.pool();
+}
+
+function wsPakSendFinish(pak, err, resp_func) {
+  let { client, msg } = pak.ws_data;
+  delete pak.ws_data;
+  let ack_resp_pkt_id = ackWrapPakFinish(pak, err, resp_func);
+
+  if (!client.connected || client.socket.readyState !== 1) { // WebSocket.OPEN
+    (client.log ? client : console).log(`Attempting to send msg=${msg} on a disconnected link, ignoring`);
+    if (!client.log && client.onError && msg && typeof msg !== 'number') {
+      // On the client, if we try to send a new packet while disconnected, this is an application error
+      client.onError(`Attempting to send msg=${msg} on a disconnected link`);
+    }
+
+    if (ack_resp_pkt_id) {
+      // Callback will never be dispatched through ack.js, remove the callback here
+      delete client.resp_cbs[ack_resp_pkt_id];
+    }
+    pak.pool();
+    return;
+  }
+
+  assert.equal(Boolean(resp_func), Boolean(ack_resp_pkt_id));
+
+  wsPakSendDest(client, pak);
+}
+
+function wsPakSend(resp_func) {
+  let pak = this; //eslint-disable-line no-invalid-this
+  wsPakSendFinish(pak, null, resp_func);
+}
+
+function wsPakSendErr(err) {
+  let pak = this; //eslint-disable-line no-invalid-this
+  wsPakSendFinish(pak, err, null);
+}
+
+export function wsPak(msg, ref_pak, client) {
+  assert(typeof msg === 'string' || typeof msg === 'number');
+
+  // Assume new packet needs to be comparable to old packet, in flags and size
+  let pak = packetCreate(ref_pak ? ref_pak.getInternalFlags() : packet.default_flags,
+    ref_pak ? ref_pak.totalSize() + PAK_HEADER_SIZE : 0);
+  pak.writeFlags();
+
+  ackWrapPakStart(pak, client, msg);
+
+  pak.ws_data = {
+    msg,
+    client,
+  };
+  pak.send = wsPakSend;
+  pak.sendErr = wsPakSendErr;
+  return pak;
+}
+
+function sendMessageInternal(client, msg, err, data, resp_func) {
+  let is_packet = isPacket(data);
+  assert(!is_packet);
+  let pak = wsPak(msg, is_packet ? data : null, client);
+
+  ackWrapPakPayload(pak, data);
+
+  if (err) {
+    pak.sendErr(err);
+  } else {
+    pak.send(resp_func);
+  }
 }
 
 export function sendMessage(msg, data, resp_func) {

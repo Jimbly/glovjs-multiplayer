@@ -54,7 +54,7 @@ function onSetChannelData(client, pak, resp_func) {
   }
 
   client_channel.ids = client_channel.ids_direct;
-  let outpak = channelServerPak(client_channel, channel_id, 'set_channel_data', false, pak, q);
+  let outpak = channelServerPak(client_channel, channel_id, 'set_channel_data', pak, q);
   outpak.writeBool(q);
   outpak.writeAnsiString(key);
   outpak.appendRemaining(pak);
