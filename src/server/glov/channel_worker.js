@@ -48,7 +48,7 @@ export class ChannelWorker {
     this.data = channel_server.ds_store.get(this.store_path, '', {});
     this.data.public = this.data.public || {};
     this.data.private = this.data.private || {};
-    this.subscribe_counts = {}; // refcount of subscriptions to other channels
+    this.subscribe_counts = Object.create(null); // refcount of subscriptions to other channels
     this.is_channel_worker = true; // TODO: Remove this?
     this.adding_client = null; // The client we're in the middle of adding, don't send them state updates yet
     this.last_msg_time = Date.now();
