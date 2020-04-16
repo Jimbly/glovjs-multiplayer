@@ -74,34 +74,67 @@ function applyCustomIds(ids, user_data_public) {
   }
 }
 
-function quietMessage(msg) {
+function quietMessage(msg, payload) {
   // FRVR - maybe generalize this?
-  return msg && (msg.msg === 'set_user' && msg.data && msg.data.key === 'pos' ||
-    msg.msg === 'vd_get' || msg.msg === 'claim');
+  return msg === 'set_user' && payload && payload.key === 'pos' ||
+    msg === 'vd_get' || msg === 'claim';
 }
+
+const nop_pool = {
+  pool: function () {
+    // No-op
+  },
+};
 
 function onChannelMsg(client, data, resp_func) {
   // Arbitrary messages, or messages to everyone subscribed to the channel, e.g. chat
-  if (quietMessage(data)) {
-    if (typeof data.data === 'object') {
-      data.data.q = 1; // do not print later, either
+  let channel_id;
+  let msg;
+  let payload;
+  let broadcast = false;
+  let is_packet = isPacket(data);
+  let log;
+  let pool = nop_pool;
+  if (is_packet) {
+    let pak = data;
+    pak.ref(); // deal with auto-pool of an empty packet
+    channel_id = pak.readAnsiString();
+    msg = pak.readAnsiString();
+    if (!pak.ended()) {
+      pool = pak;
+    }
+    // let flags = pak.readInt();
+    payload = pak;
+    log = '(pak)';
+  } else {
+    if (typeof data !== 'object') {
+      return void resp_func('Invalid data type');
+    }
+    channel_id = data.channel_id;
+    msg = data.msg;
+    payload = data.data;
+    broadcast = data.broadcast;
+    log = logdata(payload);
+  }
+  if (quietMessage(msg, payload)) {
+    if (!is_packet && typeof payload === 'object') {
+      payload.q = 1; // do not print later, either
     }
   } else {
-    console.debug(`client_id:${client.id}->${data.channel_id}: channel_msg ${logdata(data)}`);
+    console.debug(`client_id:${client.id}->${channel_id}: channel_msg ${msg} ${log}`);
   }
-  if (typeof data !== 'object') {
-    return void resp_func('Invalid data type');
-  }
-  let channel_id = data.channel_id;
   if (!channel_id) {
+    pool.pool();
     return void resp_func('Missing channel_id');
   }
   let client_channel = client.client_channel;
 
   if (!client_channel.isSubscribedTo(channel_id)) {
+    pool.pool();
     return void resp_func(`Client is not on channel ${channel_id}`);
   }
-  if (data.broadcast && typeof data.data !== 'object') {
+  if (broadcast && (is_packet || typeof payload !== 'object')) {
+    pool.pool();
     return void resp_func('Broadcast requires data object');
   }
   if (!resp_func.expecting_response) {
@@ -110,22 +143,22 @@ function onChannelMsg(client, data, resp_func) {
   let old_resp_func = resp_func;
   resp_func = function (err, resp_data) {
     if (err) { // Was previously just on cmd_parse packets: && !(net_data.data && net_data.data.silent_error)) {
-      client.log(`Error "${err}" sent from ${data.channel_id} to client in response to ${
-        data.msg} ${logdata(data.data)}`);
+      client.log(`Error "${err}" sent from ${channel_id} to client in response to ${
+        msg} ${logdata(payload)}`);
     }
     if (old_resp_func) {
       old_resp_func(err, resp_data);
     }
   };
   resp_func.expecting_response = Boolean(old_resp_func);
-  if (data.broadcast) {
-    delete data.broadcast;
-    channelServerSend(client_channel, channel_id, 'broadcast', null, data, resp_func);
+  if (broadcast) {
+    channelServerSend(client_channel, channel_id, 'broadcast', null, { msg, data: payload }, resp_func);
   } else {
     client_channel.ids = client_channel.ids_direct;
-    channelServerSend(client_channel, channel_id, data.msg, null, data.data, resp_func);
+    channelServerSend(client_channel, channel_id, msg, null, payload, resp_func);
     client_channel.ids = client_channel.ids_base;
   }
+  pool.pool();
 }
 
 const invalid_names = {

@@ -113,6 +113,14 @@ ClientChannelWorker.prototype.onMsg = function (msg, cb) {
   this.handlers[msg] = cb;
 };
 
+ClientChannelWorker.prototype.pak = function (msg) {
+  let pak = this.subs.client.wsPak('channel_msg');
+  pak.writeAnsiString(this.channel_id);
+  pak.writeAnsiString(msg);
+  // pak.writeInt(flags);
+  return pak;
+};
+
 ClientChannelWorker.prototype.send = function (msg, data, opts, resp_func) {
   assert(typeof opts !== 'function');
   this.subs.client.send('channel_msg', {

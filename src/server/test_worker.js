@@ -9,9 +9,8 @@ class TestWorker extends ChannelWorker {
     resp.writeString(this.test_bin || 'default');
     resp.send();
   }
-  handleBinSet(src, data, resp_func) {
-    // this.test_bin = pak.readString();
-    this.test_bin = data;
+  handleBinSet(src, pak, resp_func) {
+    this.test_bin = pak.readString();
     resp_func();
   }
 }

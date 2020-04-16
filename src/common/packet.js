@@ -310,6 +310,9 @@ Packet.prototype.advance = function (bytes) {
   }
   return offs;
 };
+Packet.prototype.ended = function () {
+  return this.buf_offs === this.buf_len;
+};
 
 // low-level write/read functions
 Packet.prototype.writeU8 = function (v) {
@@ -782,6 +785,7 @@ PacketDebug.prototype.zeroInt = function () {
 };
 // Functions that simply fall through
 [
+  'ended',
   'getBuffer',
   'getBufferLen',
   'getFlags',

@@ -42,8 +42,8 @@ export let sprites = {};
 cmd_parse.register({
   cmd: 'bin_get',
   func: function (str, resp_func) {
-    app.chat_ui.channel.send('bin_get', str, null, function (err, data) {
-      resp_func(err, data.readString());
+    app.chat_ui.channel.pak('bin_get').send(function (err, data) {
+      resp_func(err, data && data.readString());
     });
   },
 });
@@ -51,7 +51,9 @@ cmd_parse.register({
 cmd_parse.register({
   cmd: 'bin_set',
   func: function (str, resp_func) {
-    app.chat_ui.channel.send('bin_set', str, null, resp_func);
+    let pak = app.chat_ui.channel.pak('bin_set');
+    pak.writeString(str);
+    pak.send(resp_func);
   },
 });
 

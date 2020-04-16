@@ -3,6 +3,7 @@
 
 const assert = require('assert');
 const { ChannelWorker } = require('./channel_worker.js');
+const { isPacket } = require('../../common/packet.js');
 
 class ClientWorker extends ChannelWorker {
   constructor(channel_server, channel_id) {
@@ -56,6 +57,8 @@ class ClientWorker extends ChannelWorker {
         return void resp_func('ERR_CLIENT_DISCONNECTED');
       }
     }
+
+    assert(!isPacket(data)); // TODO: send differently if this is a packet
 
     this.client.send('channel_msg', {
       channel_id: source.channel_id,
