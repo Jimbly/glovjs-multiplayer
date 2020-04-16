@@ -174,7 +174,6 @@ Packet.prototype.reinit = function (flags, init_size, pak_debug) {
   this.bufs = null;
   this.bsizes = null;
   this.readable = false;
-  this.no_pool = false;
   this.ref_count = 1;
   this.pak_debug = pak_debug;
   if (init_size) {
@@ -306,7 +305,7 @@ Packet.prototype.advance = function (bytes) {
   if (new_offs > this.buf_len) {
     throw new Error(UNDERRUN);
   }
-  if (new_offs === this.buf_len && !this.no_pool) {
+  if (new_offs === this.buf_len) {
     this.pool();
   }
   return offs;
@@ -543,7 +542,7 @@ Packet.prototype.readString = function () {
     }
     ret = String.fromCharCode.apply(undefined, string_assembly);
   }
-  if (this.buf_offs === this.buf_len && !this.no_pool) {
+  if (this.buf_offs === this.buf_len) {
     this.pool();
   }
   return ret;
@@ -635,14 +634,14 @@ Packet.prototype.appendRemaining = function (pak) {
   assert(pak.readable);
   assert(!pak.bufs);
   assert(pak.buf);
-  assert(pak.buf_offs < pak.buf_len); // Maybe okay if equal?
+  assert(pak.buf_offs <= pak.buf_len);
   let bsize = pak.buf_len - pak.buf_offs;
-  let offs = this.advance(bsize);
-  this.buf.u8.set(new Uint8Array(pak.buf.buffer, pak.buf.byteOffset + pak.buf_offs, bsize), offs);
-  if (!pak.no_pool) {
-    // everything consumed, pool it
-    pak.pool();
+  if (bsize) {
+    let offs = this.advance(bsize);
+    this.buf.u8.set(new Uint8Array(pak.buf.buffer, pak.buf.byteOffset + pak.buf_offs, bsize), offs);
   }
+  // everything consumed, pool it
+  pak.pool();
 };
 
 Packet.prototype.toJSON = function () {
@@ -838,8 +837,7 @@ PacketDebug.prototype.contents = function () {
     assert(pak.buf);
     pak.buf_offs = 0;
   }
-  let no_pool = pak.no_pool;
-  pak.no_pool = 1;
+  pak.ref(); // prevent auto pooling
   try {
     if (pak.has_flags) {
       ret.push(`flags:${pak.readU8()}`);
@@ -857,7 +855,7 @@ PacketDebug.prototype.contents = function () {
   } catch (e) {
     ret.push(`Error dumping packet contents: ${e}`);
   }
-  pak.no_pool = no_pool;
+  pak.pool();
   pak.buf_offs = cur_offs;
   return ret.join(',');
 };
