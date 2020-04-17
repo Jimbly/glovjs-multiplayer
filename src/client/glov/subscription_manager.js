@@ -330,6 +330,7 @@ SubscriptionManager.prototype.handleLoginResponse = function (resp_func, err, re
     this.logged_in_display_name = resp.display_name;
     this.logged_in = true;
     this.was_logged_in = true;
+    this.getMyUserChannel();
     this.emit('login');
   } else {
     this.emit('login_fail', err);
