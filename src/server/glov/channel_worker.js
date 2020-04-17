@@ -72,6 +72,7 @@ export class ChannelWorker {
   }
 
   shutdown() {
+    ack.failAll(this);
     assert(!this.numSubscribers());
     assert(empty(this.subscribe_counts));
     if (this.onShutdown) {

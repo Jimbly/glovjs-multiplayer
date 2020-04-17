@@ -53,6 +53,8 @@ const POOL_BUF_BY_SIZE = [
   20, // 2^14 : 16384
   20, // 2^15 : 32768
   20, // 2^16 : 65536
+  10, // 2^17 : 131072
+  10, // 2^18 : 262144,
 ];
 
 let pak_pool = [];
@@ -72,6 +74,9 @@ function allocDataView(size) {
       //console.log(`Buffer FROMPOOL:${size}/${pool_idx}`);
       return buf_pool[pool_idx].pop();
     }
+  } else {
+    // Enable this (and lower pool size) to track down big packets:
+    // console.log(`Allocating UNPOOLABLE buffer of size ${size} from ${new Error().stack}`);
   }
   //console.log(`Buffer ALLOC:${size}`);
   let u8 = new Uint8Array(size);
@@ -158,7 +163,7 @@ function poolBuf(dv) {
       arr.push(dv);
     }
   } else {
-    console.log(`Buffer UNPOOLABLE:${dv.byteLength}`);
+    // console.log(`Buffer UNPOOLABLE:${dv.byteLength}`);
   }
 }
 
