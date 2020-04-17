@@ -394,7 +394,7 @@ Packet.prototype.zeroInt = function () {
   }
   while (zeroes) {
     --zeroes;
-    this.buf[this.buf_offs++] = 0;
+    this.buf.u8[this.buf_offs++] = 0;
   }
 };
 Packet.prototype.readInt = function () {
@@ -707,7 +707,12 @@ Packet.prototype.getBufferLen = function () {
   return this.readable ? this.buf_len : this.buf_offs;
 };
 
-Packet.prototype.getOffset = Packet.prototype.totalSize;
+Packet.prototype.getOffset = function () {
+  if (this.readable) {
+    return this.buf_offs;
+  }
+  return this.totalSize();
+};
 
 Packet.prototype.seek = function (pos) {
   assert(this.readable); // .makeReadable should be called so that it is a single buffer
