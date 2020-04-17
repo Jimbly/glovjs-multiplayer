@@ -17,7 +17,7 @@ export function init(params) {
   if (String(document.location).indexOf('http://localhost') === 0) {
     packet.default_flags |= packet.PACKET_DEBUG;
   }
-  client = new WSClient();
+  client = new WSClient(params.path);
   subs = subscription_manager.create(client);
   subs.auto_create_user = Boolean(params.auto_create_user);
   window.subs = subs; // for debugging

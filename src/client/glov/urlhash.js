@@ -15,10 +15,16 @@
     def: '1,2',
     hides: { otherfield: true },
     push: true, // do a pushState instead of replaceState when this changes
-    root: true, // URL should be foo.com/pos/1,2 instead of foo.com/?pos=1,2
+    hide_values: { foo: true }, // do not add to URL if values is in the provided set
   });
   urlhash.set('pos', '3,4');
   urlhash.get('pos')
+
+  urlhash.route('w/:w')     // use URLs like foo.com/w/1   instead of foo.com/?w=1
+  urlhash.route('w/:w/:wg')  // use URLs like foo.com/w/1/2 instead of foo.com/?w=1&wg=2
+
+  // Called whenever the URL state is pushed, even if to exactly the same URL (e.g. on link click)
+  urlhash.onChange(cb)
 */
 
 const assert = require('assert');
@@ -34,8 +40,57 @@ let title_suffix = '';
 
 let url_base = (document.location.href || '').match(/^[^#?]+/)[0];
 
+let on_change = [];
+
 export function getURLBase() {
   return url_base;
+}
+
+export function onChange(cb) {
+  on_change.push(cb);
+}
+
+function cmpNumKeys(a, b) {
+  let d = b.keys.length - a.keys.length;
+  if (d) {
+    return d;
+  }
+  // otherwise alphabetical for stability
+  for (let ii = 0; ii < a.keys.length; ++ii) {
+    if (a.keys[ii] < b.keys[ii]) {
+      return -1;
+    } else if (a.keys[ii] > b.keys[ii]) {
+      return 1;
+    }
+  }
+  assert(false); // two routes with identical keys
+  return 0;
+}
+
+const route_param_regex = /:(\w+)/g;
+let routes = [];
+export function route(route_string) {
+  let keys = [];
+  // foo/:key/:bar => foo/([^/&?]+)/([^/&?]+)
+  let base = route_string.replace(route_param_regex, function (ignored, match) {
+    keys.push(match);
+    return '([^/&?]+)';
+  });
+  let regex = new RegExp(`^${base}(?:$|\\?)`);
+  let new_route = {
+    route_string,
+    regex,
+    keys,
+  };
+  for (let ii = 0; ii < keys.length; ++ii) {
+    let opts = params[keys[ii]];
+    // Must have already registered these keys
+    assert(opts);
+    opts.routes = opts.routes || [];
+    opts.routes.push(new_route);
+  }
+  routes.push(new_route);
+  routes.sort(cmpNumKeys);
 }
 
 function queryString() {
@@ -45,10 +100,14 @@ function queryString() {
 
 const regex_value = /[^\w]\w+=([^&]+)/;
 function getValue(query_string, opts) {
-  if (opts.root) {
-    let m = query_string.match(opts.regex_root);
-    if (m) {
-      return m[1]; // otherwise try non-rooted format
+  if (opts.routes) {
+    for (let ii = 0; ii < opts.routes.length; ++ii) {
+      let r = opts.routes[ii];
+      let m = query_string.match(r.regex);
+      if (m) {
+        let idx = r.keys.indexOf(opts.key);
+        return m[1 + idx];
+      }
     }
   }
   let m = query_string.match(opts.regex) || [];
@@ -116,6 +175,9 @@ function goInternal(query_string) { // with the '?'
       opts.change(opts.value);
     }
   }
+  for (let ii = 0; ii < on_change.length; ++ii) {
+    on_change[ii]();
+  }
 }
 
 let eff_title;
@@ -132,6 +194,27 @@ function toString() {
     }
   }
   let root_value = '';
+  outer: // eslint-disable-line no-labels
+  for (let ii = 0; ii < routes.length; ++ii) {
+    let r = routes[ii];
+    for (let jj = 0; jj < r.keys.length; ++jj) {
+      let key = r.keys[jj];
+      if (hidden[key]) {
+        continue outer; // eslint-disable-line no-labels
+      }
+      let opts = params[key];
+      if (opts.hide_values[opts.value]) {
+        continue outer; // eslint-disable-line no-labels
+      }
+      // has a value, is not hidden, continue
+    }
+    // route is good!
+    root_value = r.route_string.replace(route_param_regex, function (ignored, key) {
+      hidden[key] = true;
+      return String(params[key].value);
+    });
+    break;
+  }
   for (let key in params) {
     if (hidden[key]) {
       continue;
@@ -142,13 +225,8 @@ function toString() {
         values.push(`${key}=${v}`);
       }
     } else {
-      if (opts.value !== opts.def) {
-        if (opts.root) {
-          assert(!root_value);
-          root_value = `${key}/${opts.value}`;
-        } else {
-          values.push(`${key}=${opts.value}`);
-        }
+      if (!opts.hide_values[opts.value]) {
+        values.push(`${key}=${opts.value}`);
         if (!eff_title && opts.title) {
           eff_title = opts.title(opts.value);
         }
@@ -245,11 +323,10 @@ export function register(opts) {
     regex_type = 'gu';
   } else {
     opts.def = opts.def || '';
+    opts.hide_values = opts.hide_values || {};
+    opts.hide_values[opts.def] = true;
   }
   opts.regex = new RegExp(regex_search, regex_type);
-  if (opts.root) {
-    opts.regex_root = new RegExp(`^${opts.key}/([^?]+)`, regex_type);
-  }
   params[opts.key] = opts;
   // Get initial value
   opts.value = getValue(queryString(), opts);

@@ -114,6 +114,14 @@ let is_ios_safari = (function () {
   return is_ios && webkit && !ua.match(/CriOS/i);
 }());
 
+// Didn't need this for a while, but got slow on iOS recently :(
+const postprocessing_reset_version = '3';
+export let postprocessing = local_storage.get('glov_no_postprocessing') !== postprocessing_reset_version;
+export function postprocessingAllow(allow) {
+  local_storage.set('glov_no_postprocessing', allow ? undefined : postprocessing_reset_version);
+  postprocessing = allow;
+}
+
 function normalizeRow(m, idx) {
   let len = m[idx]*m[idx] + m[idx+1]*m[idx+1] + m[idx+2]*m[idx+2];
   if (len > 0) {
@@ -660,7 +668,7 @@ function glovErrorReport(msg, file, line, col) {
     // frame, or this is a secondary error caused by the first, do not report it.
     // Could maybe hash the error message and just report each message once, and
     // flag errors as primary or secondary.
-    return true;
+    return false;
   }
   if (msg.match(filtered_errors)) {
     return false;

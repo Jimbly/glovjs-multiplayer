@@ -139,6 +139,7 @@ export function inherits(ctor, superCtor) {
   // From Node.js
   assert(typeof superCtor === 'function');
   // not needed? ctor.super_ = superCtor; // eslint-disable-line no-underscore-dangle
+  // second parameter also not actually needed, just defines new Foo().constructor === Foo?
   ctor.prototype = Object.create(superCtor.prototype, {
     constructor: {
       value: ctor,

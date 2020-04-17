@@ -15,9 +15,22 @@ let broadcasts = {};
 export function register(id, cb, register_cb) {
   assert(id);
   assert(cb);
-  assert(!queues[id]);
+  setTimeout(function () {
+    if (queues[id]) {
+      return void register_cb('ERR_ALREADY_EXISTS');
+    }
+    assert(!queues[id]);
+    queues[id] = cb;
+    register_cb(null);
+  }, 30); // slight delay to force async behavior
+}
+
+export function replaceMessageHandler(id, old_cb, cb) {
+  assert(id);
+  assert(cb);
+  assert(queues[id]);
+  assert.equal(queues[id], old_cb);
   queues[id] = cb;
-  register_cb(null);
 }
 
 // subscribe to a broadcast-to-all channel
@@ -54,4 +67,8 @@ export function publish(dest, pak, cb) {
     queues[dest](clone);
     return cb(null);
   });
+}
+
+export function create() {
+  return exports;
 }

@@ -3,14 +3,16 @@
 
 const { ackWrapPakStart, ackWrapPakFinish, ackWrapPakPayload } = require('../../common/ack.js');
 const assert = require('assert');
+const asyncSeries = require('async-series');
 const cmd_parse = require('../../common/cmd_parse.js');
 const { ChannelWorker } = require('./channel_worker.js');
 const client_comm = require('./client_comm.js');
 const default_workers = require('./default_workers.js');
-const exchange = require('./exchange.js');
+const { ERR_NOT_FOUND } = require('./exchange.js');
 const log = require('./log.js');
 const packet = require('../../common/packet.js');
 const { isPacket, packetCreate } = packet;
+const { shutdown } = require('./server.js');
 const { clone, logdata } = require('../../common/util.js');
 const { inspect } = require('util');
 
@@ -38,7 +40,7 @@ function channelServerSendFinish(pak, err, resp_func) {
   if (!resp_func) {
     resp_func = function (err) {
       if (err) {
-        if (err === exchange.ERR_NOT_FOUND && typeof msg === 'number') {
+        if (err === ERR_NOT_FOUND && typeof msg === 'number') {
           // not found error while acking, happens with unsubscribe, etc, right before shutdown, silently ignore
         } else {
           console.error(`Received unhandled error response while handling "${msg}"` +
@@ -55,24 +57,25 @@ function channelServerSendFinish(pak, err, resp_func) {
     pak.pool();
     return resp_func(err);
   }
+  let channel_server = source.channel_server;
   let retries = 10;
   function trySend(prev_error) {
     if (!retries--) {
+      console.error(`RETRIES_EXHAUSTED attempting to send ${msg} from ${source.channel_id} to ${dest}`);
       return finalError(prev_error || 'RETRIES_EXHAUSTED');
     }
-    return exchange.publish(dest, pak, function (err) {
+    return channel_server.exchange.publish(dest, pak, function (err) {
       if (!err) {
         // Sent successfully, resp_func called when other side ack's.
         pak.pool();
         return null;
       }
-      if (err !== exchange.ERR_NOT_FOUND) {
+      if (err !== ERR_NOT_FOUND) {
         // Some error other than not finding the destination, should we do a retry?
         return finalError(err);
       }
       // Destination not found, should we create it?
       let [dest_type, dest_id] = dest.split('.');
-      let channel_server = source.channel_server;
       let ctor = channel_server.channel_types[dest_type];
       if (!ctor) {
         return finalError('ERR_UNKNOWN_CHANNEL_TYPE');
@@ -85,9 +88,7 @@ function channelServerSendFinish(pak, err, resp_func) {
       }
       return channel_server.autoCreateChannel(dest_type, dest_id, function (err2) {
         if (err2) {
-          console.info(`Error auto-creating channel ${dest}:`, err2);
-        } else {
-          console.log(`Auto-created channel ${dest}`);
+          console.info(`Error auto-creating channel ${dest}:`, err2, `retries: ${retries}`);
         }
         trySend(err);
       });
@@ -142,7 +143,9 @@ export function channelServerSend(source, dest, msg, err, data, resp_func, q) {
   let pak = channelServerPak(source, dest, msg, is_packet ? data : null, q || data && data.q,
     !is_packet ? `${err ? `err:${logdata(err)}` : ''} ${logdata(data)}` : null);
 
-  ackWrapPakPayload(pak, data);
+  if (!err) {
+    ackWrapPakPayload(pak, data);
+  }
 
   pak.send(err, resp_func);
 }
@@ -151,24 +154,85 @@ class ChannelServer {
   constructor() {
     this.channel_types = {};
     this.local_channels = {};
+    this.channels_creating = {}; // id -> list of callbacks
     this.last_worker = null; // For debug logging upon crash
+    this.ds_store_bulk = null; // bulkdata store
+    this.ds_store_meta = null; // metadata store
   }
 
   autoCreateChannel(channel_type, subid, cb) {
+    const self = this;
     let channel_id = `${channel_type}.${subid}`;
+    let cbs = this.channels_creating[channel_id];
+    if (cbs) {
+      cbs.push(cb);
+      return;
+    }
     assert(!this.local_channels[channel_id]);
     let Ctor = this.channel_types[channel_type];
     assert(Ctor);
     assert(Ctor.autocreate);
-    let channel = new Ctor(this, channel_id);
-    exchange.register(channel.channel_id, channel.handleMessage.bind(channel), (err) => {
-      if (err) {
-        // someone else create an identically named channel at the same time, discard ours
-      } else {
-        // success
-        this.local_channels[channel_id] = channel;
+
+    const store_path = `${channel_type}/${channel_id}`;
+
+    cbs = this.channels_creating[channel_id] = [cb];
+
+    let queued_msgs = [];
+    function proxyMessageHandler(message) {
+      queued_msgs.push(message);
+    }
+    let channel_data;
+    // This could be in parallel if we added code to cleanup what happens when the
+    // data store loads but exchange registration fails.
+    asyncSeries([
+      function registerOnExchange(next) {
+        self.exchange.register(channel_id, proxyMessageHandler, (err) => {
+          if (err) {
+            console.info(`autoCreateChannel(${channel_id}) exchange register failed:`, err);
+            // someone else created an identically named channel at the same time, discard ours
+          }
+          next(err);
+        });
+      },
+      function loadDataStore(next) {
+        if (Ctor.prototype.no_datastore) {
+          channel_data = {};
+          return void next();
+        }
+        self.ds_store_meta.getAsync(store_path, '', {}, function (err, response) {
+          if (err) {
+            // We do not handle this - any messages sent to us have been lost, no
+            // other worker will replace us, and queued_msgs will continuously grow.
+            shutdown(`autoCreateChannel(${channel_id}) error loading data store:`, err);
+            return void next(err);
+          }
+          channel_data = response;
+          next();
+        });
+      },
+      function createWorker(next) {
+        assert(channel_data);
+        assert(!self.local_channels[channel_id]);
+        let channel = new Ctor(self, channel_id, channel_data);
+        self.local_channels[channel_id] = channel;
+        self.exchange.replaceMessageHandler(channel_id, proxyMessageHandler, channel.handleMessage.bind(channel));
+        console.log(`Auto-created channel ${channel_id} (${queued_msgs.length} ` +
+          `msgs queued, ${cbs.length} cbs waiting)`);
+
+        // Dispatch queued messages
+        for (let ii = 0; ii < queued_msgs.length; ++ii) {
+          channel.handleMessage(queued_msgs[ii]);
+        }
+        // Will next notify anyone who called autoCreateChannel (they will
+        //   re-send the message that was not delivered)
+        next();
       }
-      cb(err);
+    ], function (err) {
+      assert.equal(self.channels_creating[channel_id], cbs);
+      delete self.channels_creating[channel_id];
+      for (let ii = 0; ii < cbs.length; ++ii) {
+        cbs[ii](err);
+      }
     });
   }
 
@@ -178,23 +242,26 @@ class ChannelServer {
     let Ctor = this.channel_types[channel_type];
     assert(Ctor);
     // fine whether it's Ctor.autocreate or not
-    let channel = new Ctor(this, channel_id);
+
+    let channel = new Ctor(this, channel_id, {});
+    assert(channel.no_datastore); // local channels should not be having any data persistance
+
     this.local_channels[channel_id] = channel;
-    exchange.register(channel.channel_id, channel.handleMessage.bind(channel), function (err) {
+    this.exchange.register(channel.channel_id, channel.handleMessage.bind(channel), function (err) {
       // someone else create an identically named channel, shouldn't be possible to happen!
-      assert(!err);
+      assert(!err, `failed to register channel: ${channel.channel_id}`);
     });
     return channel;
   }
 
   removeChannelLocal(channel_id) {
     assert(this.local_channels[channel_id]);
-    exchange.unregister(channel_id);
+    this.exchange.unregister(channel_id);
     delete this.local_channels[channel_id];
     // TODO: Let others know to reset/clear their packet ids going to this worker,
     // to free memory and ease re-creation later?
     this.sendAsChannelServer('channel_server', 'worker_removed', channel_id);
-    //exchange.publish(this.csworker.channel_id, 'channel_server', ...
+    //this.exchange.publish(this.csworker.channel_id, 'channel_server', ...
   }
 
   handleWorkerRemoved(removed_channel_id) {
@@ -211,17 +278,22 @@ class ChannelServer {
     return `${this.csuid}-${client.id}`;
   }
 
-  init(ds_store, ws_server) {
-    this.csuid = String(process.pid); // TODO: use exchange to get a unique UID
-    this.ds_store = ds_store;
+  init(params) {
+    let { data_stores, ws_server, exchange } = params;
+    this.csuid = `${process.env.PODNAME || 'local'}-${process.pid}`;
     this.ws_server = ws_server;
+
+    this.ds_store_bulk = data_stores.bulk;
+    this.ds_store_meta = data_stores.meta;
+    this.exchange = exchange;
+
     client_comm.init(this);
 
     default_workers.init(this);
 
     this.csworker = this.createChannelLocal(`channel_server.${this.csuid}`);
     // Should this happen for all channels generically?  Do we need a generic "broadcast to all user.* channels"?
-    exchange.subscribe('channel_server', this.csworker.handleMessage.bind(this.csworker));
+    this.exchange.subscribe('channel_server', this.csworker.handleMessage.bind(this.csworker));
 
     this.tick_func = this.doTick.bind(this);
     this.tick_time = 250;
@@ -260,6 +332,7 @@ class ChannelServer {
 
   registerChannelWorker(channel_type, ctor, options) {
     options = options || {};
+    assert(!this.channel_types[channel_type]);
     this.channel_types[channel_type] = ctor;
     ctor.autocreate = options.autocreate;
     ctor.subid_regex = options.subid_regex;

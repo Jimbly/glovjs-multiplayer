@@ -88,7 +88,9 @@ function sendMessageInternal(client, msg, err, data, resp_func) {
   let is_packet = isPacket(data);
   let pak = wsPak(msg, is_packet ? data : null, client);
 
-  ackWrapPakPayload(pak, data);
+  if (!err) {
+    ackWrapPakPayload(pak, data);
+  }
 
   pak.send(err, resp_func);
 }

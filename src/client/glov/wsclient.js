@@ -6,6 +6,7 @@ const ack = require('../../common/ack.js');
 const { ackInitReceiver } = ack;
 const assert = require('assert');
 const { min } = Math;
+const urlhash = require('./urlhash.js');
 const walltime = require('./walltime.js');
 const wscommon = require('../../common/wscommon.js');
 const { wsHandleMessage } = wscommon;
@@ -17,7 +18,7 @@ const { wsHandleMessage } = wscommon;
 //   return r;
 // }
 
-export function WSClient() {
+export function WSClient(path) {
   this.id = null;
   this.handlers = {};
   this.socket = null;
@@ -30,23 +31,32 @@ export function WSClient() {
   this.last_send_time = Date.now();
   ackInitReceiver(this);
 
-  let path = document.location.toString().match(/^[^#?]+/)[0]; // remove search and anchor
-  if (path.slice(-1) !== '/') {
-    // /file.html or /path/file.html or /path
-    let idx = path.lastIndexOf('/');
-    if (idx !== -1) {
-      let filename = path.slice(idx+1);
-      if (filename.indexOf('.') !== -1) {
-        path = path.slice(0, idx+1);
+  if (!path) {
+
+    path = document.location.toString().match(/^[^#?]+/)[0]; // remove search and anchor
+
+
+    if (path.slice(-1) !== '/') {
+      // /file.html or /path/file.html or /path
+      let idx = path.lastIndexOf('/');
+      if (idx !== -1) {
+        let filename = path.slice(idx+1);
+        if (filename.indexOf('.') !== -1) {
+          path = path.slice(0, idx+1);
+        } else {
+          path += '/';
+        }
       } else {
         path += '/';
       }
-    } else {
-      path += '/';
     }
+    path = path.replace(/^http/, 'ws');
+    this.path = `${path}ws`;
+
+  } else {
+    this.path = path;
   }
-  path = path.replace(/^http/, 'ws');
-  this.path = `${path}ws`;
+
   if (path.match(/:\d+\//)) {
     // has port, don't try anything fancy
     this.path2 = this.path;
@@ -129,13 +139,28 @@ WSClient.prototype.checkForNewAppVersion = function () {
   }
   this.app_ver_check_in_progress = true;
   let xhr = new XMLHttpRequest();
-  xhr.open('GET', 'app.ver.json', true);
-  xhr.responseType = 'json';
+  xhr.open('GET', `${urlhash.getURLBase()}app.ver.json`, true);
+  // xhr.responseType = 'json'; // causes un-catchable, un-reported errors
   xhr.onload = () => {
     this.app_ver_check_in_progress = false;
-    let obj = xhr.response;
-    if (obj && obj.ver) {
-      this.onAppVer(obj.ver);
+    let text;
+    try {
+      text = xhr.responseText;
+      let obj = JSON.parse(text);
+      if (obj && obj.ver) {
+        this.onAppVer(obj.ver);
+      }
+    } catch (e) {
+      console.error('Received invalid response when checking app version:', text || '<empty response>');
+      // Probably internal server error or such as the server is restart, try again momentarily
+      // This is not triggered on connection errors, only if we got a (non-parseable) response from the server
+      if (!this.delayed_recheck) {
+        this.delayed_recheck = true;
+        setTimeout(() => {
+          this.delayed_recheck = false;
+          this.checkForNewAppVersion();
+        }, 1000);
+      }
     }
   };
   xhr.onerror = () => {

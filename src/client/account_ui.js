@@ -1,12 +1,25 @@
 // Portions Copyright 2019 Jimb Esser (https://github.com/Jimbly/)
 // Released under MIT License: https://opensource.org/licenses/MIT
 /* eslint no-bitwise:off */
+const assert = require('assert');
 const local_storage = require('./glov/local_storage.js');
 const glov_font = require('./glov/font.js');
 const { KEYS, keyDownEdge } = require('./glov/input.js');
+const { linkText } = require('./glov/link.js');
 const net = require('./glov/net.js');
 const ui = require('./glov/ui.js');
 const { vec4 } = require('./glov/vmath.js');
+
+export let style_link = glov_font.style(null, {
+  color: 0x5040FFff,
+  outline_width: 1.0,
+  outline_color: 0x00000020,
+});
+export let style_link_hover = glov_font.style(null, {
+  color: 0x0000FFff,
+  outline_width: 1.0,
+  outline_color: 0x00000020,
+});
 
 function AccountUI() {
   this.edit_box_name = ui.createEditBox({
@@ -37,7 +50,7 @@ function AccountUI() {
 }
 
 AccountUI.prototype.showLogin = function (param) {
-  let { x, y, style, button_height, prelogout, center } = param;
+  let { x, y, style, button_height, prelogout, center, url_tos, url_priv } = param;
   button_height = button_height || ui.button_height;
   let { edit_box_name, edit_box_password, edit_box_password_confirm, edit_box_email, edit_box_display_name } = this;
   let login_message;
@@ -45,6 +58,39 @@ AccountUI.prototype.showLogin = function (param) {
   let pad = 10;
   let min_h = BOX_H * 2 + pad * 3 + button_height;
   let calign = center ? glov_font.ALIGN.HRIGHT : (glov_font.ALIGN.HLEFT | glov_font.ALIGN.HFIT);
+
+  function showTOS(is_create) {
+    if (url_tos) {
+      assert(url_priv);
+      let terms_height = ui.font_height * 0.75;
+      ui.font.drawSizedAligned(style, x, y, Z.UI, terms_height, glov_font.ALIGN.HCENTER, 0, 0,
+        `By ${is_create ? 'creating an account' : 'logging in'} you agree to our`);
+      y += terms_height;
+      let and_w = ui.font.getStringWidth(style, terms_height, ' and ');
+      ui.font.drawSizedAligned(style, x, y, Z.UI, terms_height, glov_font.ALIGN.HCENTER, 0, 0,
+        'and');
+      linkText({
+        style_link, style_link_hover,
+        x: x - and_w / 2 - ui.font.getStringWidth(style_link, terms_height, 'Terms of Service'),
+        y,
+        z: Z.UI,
+        font_size: terms_height,
+        url: url_tos,
+        text: 'Terms of Service',
+      });
+      linkText({
+        style_link, style_link_hover,
+        x: x + and_w / 2,
+        y,
+        z: Z.UI,
+        font_size: terms_height,
+        url: url_priv,
+        text: 'Privacy Policy',
+      });
+    }
+    y += BOX_H + pad;
+  }
+
   if (!net.client.connected) {
     login_message = 'Establishing connection...';
   } else if (net.subs.logging_in) {
@@ -120,6 +166,8 @@ AccountUI.prototype.showLogin = function (param) {
 
       y += BOX_H + pad;
 
+      showTOS(true);
+
       submit = ui.buttonText({
         x, y, w: 150, h: button_height,
         text: 'Create User',
@@ -160,6 +208,9 @@ AccountUI.prototype.showLogin = function (param) {
       }
 
     } else {
+
+      showTOS(false);
+
       submit = ui.buttonText({
         x, y, w: 150, h: button_height,
         text: 'Log in',

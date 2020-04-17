@@ -189,7 +189,7 @@ module.exports = {
     "new-parens": "error",
     "newline-after-var": "off",
     "newline-before-return": "off",
-    "newline-per-chained-call": ignore_style ? "off" : "error",
+    "newline-per-chained-call": "off",
     "no-alert": "error",
     "no-array-constructor": "error",
     "no-async-promise-executor": "error",

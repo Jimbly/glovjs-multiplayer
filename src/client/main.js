@@ -22,7 +22,7 @@ const particle_data = require('./particle_data.js');
 const { vec2, vec3, v2sub, vec4, v4copy } = require('./glov/vmath.js');
 
 window.Z = window.Z || {};
-Z.BACKGROUND = 0;
+Z.BACKGROUND = 1;
 Z.SPRITES = 10;
 Z.PARTICLES = 20;
 Z.BORDERS = 90;

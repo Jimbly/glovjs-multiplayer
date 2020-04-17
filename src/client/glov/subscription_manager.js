@@ -292,7 +292,9 @@ SubscriptionManager.prototype.getMyUserChannel = function () {
     return null;
   }
   let channel = this.getChannel(`user.${user_id}`);
-  channel.autosubscribed = true;
+  if (!this.logging_out) {
+    channel.autosubscribed = true;
+  }
   return channel;
 };
 
