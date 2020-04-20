@@ -9,11 +9,27 @@ if (!Uint8Array.prototype.slice) {
       return new Uint8Array(Array.prototype.slice.call(this, begin, end));
     }
   });
+  Object.defineProperty(Int8Array.prototype, 'slice', {
+    value: function (begin, end) {
+      return new Int8Array(Array.prototype.slice.call(this, begin, end));
+    }
+  });
+  Object.defineProperty(Int32Array.prototype, 'slice', {
+    value: function (begin, end) {
+      return new Int32Array(Array.prototype.slice.call(this, begin, end));
+    }
+  });
   Object.defineProperty(Float32Array.prototype, 'slice', {
     value: function (begin, end) {
-      // PERFTODO: If we use this on any significant audience, this can be likely
-      // way faster by not making a temporary Array in the middle
       return new Float32Array(Array.prototype.slice.call(this, begin, end));
+    }
+  });
+}
+
+if (!Int32Array.prototype.join) {
+  Object.defineProperty(Int32Array.prototype, 'join', {
+    value: function (delim) {
+      return Array.prototype.join.call(this, delim);
     }
   });
 }
