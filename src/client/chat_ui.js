@@ -148,6 +148,7 @@ function ChatUI(params) {
   };
 
   net.subs.on('admin_msg', (msg) => {
+    ui.playUISound('msg_err');
     this.addChat(msg, 'error');
   });
 }
@@ -157,12 +158,19 @@ ChatUI.prototype.addChat = function (msg, style) {
   console.log(msg);
 };
 ChatUI.prototype.onMsgJoin = function (data) {
+  if (data.client_id !== net.client.id) {
+    ui.playUISound('user_join');
+  }
   this.addChat(`${data.display_name} joined the channel`);
 };
 ChatUI.prototype.onMsgLeave = function (data) {
+  ui.playUISound('user_leave');
   this.addChat(`${data.display_name} left the channel`);
 };
 ChatUI.prototype.onMsgChat = function (data) {
+  if (data.client_ids.id !== net.client.id) {
+    ui.playUISound('msg_in');
+  }
   this.addChat(`[${data.client_ids.display_name}] ${data.msg}`);
 };
 
@@ -493,6 +501,7 @@ ChatUI.prototype.run = function (opts) {
             }
             this.history.add(text);
             this.cmdParse(text.slice(1), () => {
+              ui.playUISound('msg_out_err');
               if (!this.edit_text_entry.getText()) {
                 this.history.unadd(text);
                 this.edit_text_entry.setText(text);
@@ -516,6 +525,7 @@ ChatUI.prototype.run = function (opts) {
               });
             }
           }
+          ui.playUISound('msg_out'); // after cmdParse may have adjust volume
         } else {
           is_focused = false;
           ui.focusCanvas();

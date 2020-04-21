@@ -13,6 +13,7 @@ const net = require('./glov/net.js');
 const net_position_manager = require('./glov/net_position_manager.js');
 const particles = require('./glov/particles.js');
 const shaders = require('./glov/shaders.js');
+const { soundLoad, soundPlay } = require('./glov/sound.js');
 const glov_sprites = require('./glov/sprites.js');
 const sprite_animation = require('./glov/sprite_animation.js');
 const ui = require('./glov/ui.js');
@@ -68,7 +69,14 @@ export function main() {
     game_width,
     game_height,
     pixely: false,
-    sound_manager: require('./glov/sound_manager.js').create(),
+    ui_sounds: {
+      msg_err: 'msg_err',
+      msg_in: 'msg_in',
+      msg_out: 'msg_out',
+      msg_out_err: 'msg_out_err',
+      user_join: 'user_join',
+      user_leave: 'user_leave',
+    },
   })) {
     return;
   }
@@ -76,7 +84,6 @@ export function main() {
   const test_shader = shaders.create(gl.FRAGMENT_SHADER, 'test.fp',
     fs.readFileSync(`${__dirname}/shaders/test.fp`, 'utf8'));
 
-  const sound_manager = engine.sound_manager;
   // const font = engine.font;
 
 
@@ -99,7 +106,7 @@ export function main() {
   function initGraphics() {
     particles.preloadParticleData(particle_data);
 
-    sound_manager.loadSound('test');
+    soundLoad('test');
 
     sprites.white = createSprite({ url: 'white' });
 
@@ -172,7 +179,7 @@ export function main() {
       v4copy(test.color_sprite, color_yellow);
     } else if (input.click(bounds)) {
       v4copy(test.color_sprite, (test.color_sprite[2] === 0) ? color_white : color_red);
-      sound_manager.play('test');
+      soundPlay('test');
     } else if (input.mouseOver(bounds)) {
       v4copy(test.color_sprite, color_white);
       test.color_sprite[3] = 0.5;
