@@ -6,7 +6,6 @@ const assert = require('assert');
 const { cmd_parse } = require('./glov/cmds.js');
 const engine = require('./glov/engine.js');
 const glov_font = require('./glov/font.js');
-const fs = require('fs');
 const input = require('./glov/input.js');
 const { atan2, random } = Math;
 const net = require('./glov/net.js');
@@ -81,8 +80,7 @@ export function main() {
     return;
   }
 
-  const test_shader = shaders.create(gl.FRAGMENT_SHADER, 'test.fp',
-    fs.readFileSync(`${__dirname}/shaders/test.fp`, 'utf8'));
+  const test_shader = shaders.create('shaders/test.fp');
 
   // const font = engine.font;
 
